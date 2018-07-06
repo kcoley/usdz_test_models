@@ -84,7 +84,7 @@ class GLTF2USD:
                     print(data)
                     print 'texcoord 0'
                     prim_var = UsdGeom.PrimvarsAPI(mesh)
-                    uv = prim_var.CreatePrimvar('primvars:Texture_uv0', Sdf.ValueTypeNames.Float2Array)
+                    uv = prim_var.CreatePrimvar('primvars:st0', Sdf.ValueTypeNames.TexCoord2fArray, 'vertex')
                     uv.Set(data)
 
 
@@ -102,7 +102,9 @@ class GLTF2USD:
         if 'material' in primitive:
             material = self.gltf_loader.json_data['materials'][primitive['material']]
             print('material present')
-            
+
+    def _create_preview_surface_material(self, material, parent_path):
+        pass
              
 
     def _get_accessor_data(self, index):
