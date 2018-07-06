@@ -4,6 +4,7 @@ import ntpath
 import numpy
 import os
 from pprint import pprint
+from gltf2loader import GLTF2Loader
 
 from pxr import Usd, UsdGeom
 # stage = Usd.Stage.CreateNew('Sphere.usda')
@@ -13,14 +14,11 @@ from pxr import Usd, UsdGeom
 
 class GLTF2USD:
     def __init__(self, gltf_file):
-        if os.path.isfile(gltf_file) and gltf_file.endswith('.gltf'):   
-            self.gltf_document = self._convert_to_gltf_document(gltf_file)
-            file_base_name = ntpath.basename(gltf_file)
-            usd_name = '{base_name}.usda'.format(base_name =os.path.splitext(file_base_name)[0])
-            print usd_name
-            self.stage = Usd.Stage.CreateNew(usd_name)
-        else:
-            raise Exception('Currently, only .gltf files are supported!')
+        self.gltf_loader = GLTF2Loader(gltf_file)
+        file_base_name = ntpath.basename(gltf_file)
+        usd_name = '{base_name}.usda'.format(base_name =os.path.splitext(file_base_name)[0])
+        print usd_name
+        self.stage = Usd.Stage.CreateNew(usd_name)
 
     def _convert_to_gltf_document(self, gltf_file):
         with open(gltf_file) as f:
@@ -30,31 +28,61 @@ class GLTF2USD:
         pprint(self.json_data)
     
     def convert_nodes_to_xform(self):
-        if 'nodes' in self.json_data:
-            for i, node in enumerate(self.json_data['nodes']):
+        if 'nodes' in self.gltf_loader.json_data:
+            for i, node in enumerate(self.gltf_loader.json_data['nodes']):
                 xform_name = 'node{}'.format(i)
                 self._convert_node_to_xform(node, xform_name)
             #self.stage.GetRootLayer().Save()
                 
-
     def _convert_node_to_xform(self, node, xform_name):
         print(node)
         xform_path = '/{}'.format(xform_name)
         xformPrim = UsdGeom.Xform.Define(self.stage, xform_path)
         if 'mesh' in node:
-            self._convert_mesh_to_xform(self.json_data['meshes'][node['mesh']], xform_path)
+            self._convert_mesh_to_xform(self.gltf_loader.json_data['meshes'][node['mesh']], xform_path)
 
     def _convert_mesh_to_xform(self, mesh, parent_path):
         #for each mesh primitive, create a USD mesh
         if 'primitives' in mesh:
             for i, mesh_primitive in enumerate(mesh['primitives']):
-                print('mesh_primitive{}'.format(i))
+                mesh_primitive_name = 'mesh_primitive{}'.format(i)
+                self._convert_primitive_to_mesh(name=mesh_primitive_name, primitive=mesh_primitive, parent_path=parent_path)
 
-    def _convert_primitive_to_mesh(self, primitive, parent_path):
+    def _convert_primitive_to_mesh(self, name, primitive, parent_path):
+        mesh = UsdGeom.Mesh.Define(self.stage, parent_path + '/{}'.format(name))
         print('mesh primitive')
+        if 'attributes' in primitive:
+            for attribute in primitive['attributes']:
+                print(attribute)
+                if attribute == 'POSITION':
+                    accessor_index = primitive['attributes'][attribute]
+                    accessor = self.gltf_loader.json_data['accessors'][accessor_index]
+                    buffer = self.gltf_loader.json_data['buffers'][0]
+                    data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
+                    mesh.CreatePointsAttr(data)
+                    print(data)
+                    
+                    print 'position attribute'
+                if attribute == 'NORMAL':
+                    accessor_index = primitive['attributes'][attribute]
+                    accessor = self.gltf_loader.json_data['accessors'][accessor_index]
+                    buffer = self.gltf_loader.json_data['buffers'][0]
+                    data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
+                    mesh.CreateNormalsAttr(data)
+                    print(data)
+                    print 'normal attribute'
+                if attribute == 'TEXCOORD_0':
+                    accessor_index = primitive['attributes'][attribute]
+                    accessor = self.gltf_loader.json_data['accessors'][accessor_index]
+                    buffer = self.gltf_loader.json_data['buffers'][0]
+                    data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
+                    print(data)
+                    print 'texcoord 0'
+                
+                
 
     def _get_accessor_data(self, index):
-        accessor = self.json_data['accessors'][index]
+        accessor = self.gltf_loader.json_data['accessors'][index]
         print(accessor)
 
 

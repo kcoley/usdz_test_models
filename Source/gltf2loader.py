@@ -1,6 +1,7 @@
 from enum import Enum
 import json
 import os
+import struct
 
 class AccessorType(Enum):
     SCALAR = 'SCALAR'
@@ -19,45 +20,98 @@ class AccessorComponentType(Enum):
     UNSIGNED_INT = 5125
     FLOAT = 5126
 
-class Accessor:
-    def __init__(self, accessor_type, accessor_component_type, count, bufferview, byteoffset = 0):
-        self.accessor_type = accessor_type
-        self.accessor_component_type = accessor_component_type
-        self.count = count
-        self.bufferview = bufferview
-        self.byteoffset = byteoffset
+class AccessorTypeCount(Enum):
+    SCALAR = 1
+    VEC2 = 2
+    VEC3 = 3
+    VEC4 = 4
+    MAT2 = 4
+    MAT3 = 9
+    MAT4 = 16
 
-class BufferView:
-    def __init__(self, buffer, bytelength, byteoffset=0, bytestride=None):
-        self.buffer = buffer
-        self.byteoffset = byteoffset
-        self.bytelength = bytelength
-        self.bytestride = bytestride
+def accessor_type_count(x):
+    return {
+        'SCALAR': 1,
+        'VEC2': 2,
+        'VEC3': 3,
+        'VEC4': 4,
+        'MAT2': 4,
+        'MAT3': 9,
+        'MAT4': 16
+    }[x]
+
+def accessor_component_type_bytesize(x):
+    return {
+        AccessorComponentType.BYTE: 1,
+        AccessorComponentType.UNSIGNED_BYTE: 1,
+        AccessorComponentType.SHORT: 2,
+        AccessorComponentType.UNSIGNED_SHORT: 2,
+        AccessorComponentType.UNSIGNED_INT: 4,
+        AccessorComponentType.FLOAT: 4,
+    }[x]
 
 
 class GLTF2Loader:
     def __init__(self, gltf_file):
         if os.path.isfile(gltf_file) and gltf_file.endswith('.gltf'):
+            self.root_dir = os.path.dirname(gltf_file)
             with open(gltf_file) as f:
                 self.json_data = json.load(f)
+        else:
+            raise Exception('Can only accept .gltf files')
 
-    def _get_accessor(self, accessor_json):
-        accessor_type = AccessorType(accessor_json['type']).name
-        accessor_component_type = AccessorComponentType(accessor_json['componentType']).name
-        count = accessor_json['count']
-        bufferview = self.json_data['bufferViews'][accessor_json['bufferView']]
-        byteoffset = accessor_json['byteOffset'] if ('byteOffset' in accessor_json) else 0
-        return Accessor(accessor_type = accessor_type, accessor_component_type = accessor_component_type, count = count, bufferview = bufferview, byteoffset = byteoffset)
+    def align(self, value, size):
+        remainder = value % size
+        return value if (remainder == 0) else (value + size - remainder)
+
+    def get_data(self, buffer, accessor):
+        bufferview = self.json_data['bufferViews'][accessor['bufferView']]
+        accessor_type = AccessorType(accessor['type'])
         
-    def _get_bufferview(self, bufferview_json):
-        buffer = bufferview_json['buffer']
-        bytelength = bufferview_json['byteLength']
-        byteoffset = bufferview_json['byteOffset'] if ('byteOffset' in bufferview_json) else 0
-        byteStride = bufferview_json['byteStride'] if ('byteStride' in bufferview_json) else None
-        return BufferView(buffer=buffer, bytelength=bytelength, byteoffset=byteoffset=, bytestride=byteStride)
+        with open(os.path.join(self.root_dir, buffer['uri']), 'rb') as buffer_fptr:
+            if 'byteOffset' in bufferview:
+                buffer_fptr.seek(bufferview['byteOffset'], 1)
 
-    def get_buffer_data(self, accessor, bufferview):
-        '''Get the buffer referenced by the bufferview'''
-        '''Get the bytelength data from the buffer (check if stride is necessary)'''
-        '''use the accessor to interpret the bufferview data'''
-        pass
+            buffer_data = buffer_fptr.read(bufferview['byteLength'])
+
+            data_arr = []
+
+            accessor_component_type = AccessorComponentType(accessor['componentType'])
+
+            accessor_type_size = accessor_type_count(accessor['type'])
+            accessor_component_type_size = accessor_component_type_bytesize(accessor_component_type)
+            
+            #bytesize = self.align(accessor_component_type_bytesize(accessor_component_type), 4)
+
+            bytestride = int(bufferview['byteStride']) if ('byteStride' in bufferview) else (accessor_type_size * accessor_component_type_size)
+            offset = accessor['byteOffset'] if 'byteOffset' in accessor else 0
+
+            data_type = ''
+            if accessor_component_type == AccessorComponentType.FLOAT:
+                data_type = 'f'
+            elif accessor_component_type == AccessorComponentType.UNSIGNED_INT:
+                data_type = 'i'
+            elif accessor_component_type == AccessorComponentType.UNSIGNED_SHORT:
+                data_type = 'h'
+            elif accessor_component_type == AccessorComponentType.UNSIGNED_BYTE:
+                data_type = 'b'
+            else:
+                raise Exception('unsupported accessor component type!')
+
+            for i in range(0, accessor['count']):
+                entries = []
+                for j in range(0, accessor_type_size):
+                    x = offset + j * accessor_component_type_size
+                    entries.append(struct.unpack(
+                        data_type, buffer_data[x:x + 4])[0])   
+                if len(entries) > 1:
+                    data_arr.append(tuple(entries))
+                else:
+                    data_arr.append(entries[0])
+                offset = offset + bytestride
+
+            return data_arr
+
+if __name__ == '__main__':
+    loader = GLTF2Loader(gltf_file='C:\\Users\\kacey\\Github\\glTF-Asset-Generator\\Output\\Mesh_PrimitiveAttribute\Mesh_PrimitiveAttribute_00.gltf')
+    print loader.get_data(loader.json_data['buffers'][0], loader.json_data['accessors'][2])
