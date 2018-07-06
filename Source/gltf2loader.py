@@ -40,6 +40,15 @@ def accessor_type_count(x):
         'MAT4': 16
     }[x]
 
+def PrimitiveMode(Enum):
+    POINTS = 0
+    LINES = 1
+    LINE_LOOP = 2
+    LINE_STRIP = 3
+    TRIANGLES = 4
+    TRIANGLE_STRIP = 5
+    TRIANGLE_FAN = 6
+
 def accessor_component_type_bytesize(x):
     return {
         AccessorComponentType.BYTE: 1,

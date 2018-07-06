@@ -4,9 +4,9 @@ import ntpath
 import numpy
 import os
 from pprint import pprint
-from gltf2loader import GLTF2Loader
+from gltf2loader import GLTF2Loader, PrimitiveMode
 
-from pxr import Usd, UsdGeom
+from pxr import Usd, UsdGeom, Sdf
 # stage = Usd.Stage.CreateNew('Sphere.usda')
 # xformPrim = UsdGeom.Xform.Define(stage, '/parent')
 # spherePrim = UsdGeom.Sphere.Define(stage, '/parent/sphere')
@@ -32,7 +32,7 @@ class GLTF2USD:
             for i, node in enumerate(self.gltf_loader.json_data['nodes']):
                 xform_name = 'node{}'.format(i)
                 self._convert_node_to_xform(node, xform_name)
-            #self.stage.GetRootLayer().Save()
+            self.stage.GetRootLayer().Save()
                 
     def _convert_node_to_xform(self, node, xform_name):
         print(node)
@@ -51,13 +51,13 @@ class GLTF2USD:
     def _convert_primitive_to_mesh(self, name, primitive, parent_path):
         mesh = UsdGeom.Mesh.Define(self.stage, parent_path + '/{}'.format(name))
         print('mesh primitive')
+        buffer = self.gltf_loader.json_data['buffers'][0]
         if 'attributes' in primitive:
             for attribute in primitive['attributes']:
                 print(attribute)
                 if attribute == 'POSITION':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
-                    buffer = self.gltf_loader.json_data['buffers'][0]
                     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
                     mesh.CreatePointsAttr(data)
                     print(data)
@@ -66,20 +66,44 @@ class GLTF2USD:
                 if attribute == 'NORMAL':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
-                    buffer = self.gltf_loader.json_data['buffers'][0]
                     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
                     mesh.CreateNormalsAttr(data)
                     print(data)
                     print 'normal attribute'
+                if attribute == 'COLOR':
+                    accessor_index = primitive['attributes'][attribute]
+                    accessor = self.gltf_loader.json_data['accessors'][accessor_index]
+                    data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
+                    mesh.CreateColorsAttr(data)
+                    print(data)
+                    print 'color attribute'
                 if attribute == 'TEXCOORD_0':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
-                    buffer = self.gltf_loader.json_data['buffers'][0]
                     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
                     print(data)
                     print 'texcoord 0'
-                
-                
+                    prim_var = UsdGeom.PrimvarsAPI(mesh)
+                    uv = prim_var.CreatePrimvar('primvars:Texture_uv0', Sdf.ValueTypeNames.Float2Array)
+                    uv.Set(data)
+
+
+        if 'indices' in primitive:
+            print('indices present')
+            indices = self.gltf_loader.get_data(buffer=buffer, accessor=self.gltf_loader.json_data['accessors'][primitive['indices']])
+            print(indices)
+            #TODO: Compute faces properly
+            
+            num_faces = len(indices)/3
+            face_count = [3] * num_faces
+            mesh.CreateFaceVertexCountsAttr(face_count)
+            mesh.CreateFaceVertexIndicesAttr(indices)
+
+        if 'material' in primitive:
+            material = self.gltf_loader.json_data['materials'][primitive['material']]
+            print('material present')
+            
+             
 
     def _get_accessor_data(self, index):
         accessor = self.gltf_loader.json_data['accessors'][index]
