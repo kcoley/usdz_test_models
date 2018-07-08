@@ -96,23 +96,30 @@ class GLTF2Loader:
             offset = accessor['byteOffset'] if 'byteOffset' in accessor else 0
 
             data_type = ''
+            data_type_size = 4
             if accessor_component_type == AccessorComponentType.FLOAT:
                 data_type = 'f'
+                data_type_size = 4
             elif accessor_component_type == AccessorComponentType.UNSIGNED_INT:
                 data_type = 'i'
+                data_type_size = 4
             elif accessor_component_type == AccessorComponentType.UNSIGNED_SHORT:
                 data_type = 'h'
+                data_type_size = 2
             elif accessor_component_type == AccessorComponentType.UNSIGNED_BYTE:
                 data_type = 'b'
+                data_type_size = 1
             else:
                 raise Exception('unsupported accessor component type!')
+
+            
 
             for i in range(0, accessor['count']):
                 entries = []
                 for j in range(0, accessor_type_size):
                     x = offset + j * accessor_component_type_size
                     entries.append(struct.unpack(
-                        data_type, buffer_data[x:x + 4])[0])   
+                        data_type, buffer_data[x:x + data_type_size])[0])   
                 if len(entries) > 1:
                     data_arr.append(tuple(entries))
                 else:
