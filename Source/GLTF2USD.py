@@ -142,6 +142,11 @@ class GLTF2USD:
                         diffuse_color.Set((base_color_factor[0],base_color_factor[1],base_color_factor[2]))
                         opacity = pbr_mat.CreateInput("opacity", Sdf.ValueTypeNames.Float)
                         opacity.Set(base_color_factor[3])
+                    if 'metallicFactor' in pbr_metallic_roughness:
+                        metallic_factor = pbr_metallic_roughness['metallicFactor']
+                        metallic = pbr_mat.CreateInput('metallic', Sdf.ValueTypeNames.Float)
+                        metallic.Set(pbr_metallic_roughness['metallicFactor'])
+
 
 
 
