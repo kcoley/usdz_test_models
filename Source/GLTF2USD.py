@@ -6,7 +6,7 @@ import os
 from pprint import pprint
 from gltf2loader import GLTF2Loader, PrimitiveMode
 
-from pxr import Usd, UsdGeom, Sdf
+from pxr import Usd, UsdGeom, Sdf, UsdShade
 # stage = Usd.Stage.CreateNew('Sphere.usda')
 # xformPrim = UsdGeom.Xform.Define(stage, '/parent')
 # spherePrim = UsdGeom.Sphere.Define(stage, '/parent/sphere')
@@ -52,6 +52,10 @@ class GLTF2USD:
         mesh = UsdGeom.Mesh.Define(self.stage, parent_path + '/{}'.format(name))
         print('mesh primitive')
         buffer = self.gltf_loader.json_data['buffers'][0]
+        if 'material' in primitive:
+            print('material present')
+            usd_material = self.usd_materials[primitive['material']]
+            UsdShade.MaterialBindingAPI(mesh).Bind(usd_material)
         if 'attributes' in primitive:
             for attribute in primitive['attributes']:
                 print(attribute)
@@ -105,6 +109,47 @@ class GLTF2USD:
 
     def _create_preview_surface_material(self, material, parent_path):
         pass
+
+    def _convert_materials_to_preview_surface(self):
+        if 'materials' in self.gltf_loader.json_data:
+            self.usd_materials = []
+            print('materials present')
+            material_path_root = '/Materials'
+            scope = UsdGeom.Scope.Define(self.stage, material_path_root)
+
+            for i, material in enumerate(self.gltf_loader.json_data['materials']):
+                name = 'pbrmaterial{}'.format(i)
+                material_path = Sdf.Path('{0}/{1}'.format(material_path_root, name))
+                usd_material = UsdShade.Material.Define(self.stage, material_path)
+                self.usd_materials.append(usd_material)
+                specular_workflow = usd_material.CreateInput("useSpecularWorkflow", Sdf.ValueTypeNames.Bool)
+                specular_workflow.Set(False)
+                usd_material_surface_output = usd_material.CreateOutput("surface", Sdf.ValueTypeNames.Token)
+                usd_material_displacement_output = usd_material.CreateOutput("displacement", Sdf.ValueTypeNames.Token)
+                pbr_mat = UsdShade.Shader.Define(self.stage, material_path.AppendChild('pbrMat1'))
+                pbr_mat.CreateIdAttr("UsdPreviewSurface")
+                pbr_mat_surface_output = pbr_mat.CreateOutput("surface", Sdf.ValueTypeNames.Token)
+                pbr_mat_displacement_output = pbr_mat.CreateOutput("displacement", Sdf.ValueTypeNames.Token)
+                usd_material_surface_output.ConnectToSource(pbr_mat_surface_output)
+                usd_material_displacement_output.ConnectToSource(pbr_mat_displacement_output)
+                
+                if 'pbrMetallicRoughness' in material:
+                    pbr_metallic_roughness = material['pbrMetallicRoughness']
+                    print('pbr present')
+                    if 'baseColorFactor' in pbr_metallic_roughness:
+                        diffuse_color = pbr_mat.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f)
+                        base_color_factor = pbr_metallic_roughness['baseColorFactor']
+                        diffuse_color.Set((base_color_factor[0],base_color_factor[1],base_color_factor[2]))
+                        opacity = pbr_mat.CreateInput("opacity", Sdf.ValueTypeNames.Float)
+                        opacity.Set(base_color_factor[3])
+
+
+
+
+
+
+
+        
              
 
     def _get_accessor_data(self, index):
@@ -114,6 +159,7 @@ class GLTF2USD:
 
 def convert_to_usd(gltf_file):
     gltf_converter = GLTF2USD(gltf_file)
+    gltf_converter._convert_materials_to_preview_surface()
     gltf_converter.convert_nodes_to_xform()
     #gltf_converter.print_gltf_data()
 
