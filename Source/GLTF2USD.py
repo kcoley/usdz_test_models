@@ -4,7 +4,10 @@ import ntpath
 import numpy
 import os
 from pprint import pprint
+
 from gltf2loader import GLTF2Loader, PrimitiveMode
+
+from PIL import Image
 
 from pxr import Usd, UsdGeom, Sdf, UsdShade
 # stage = Usd.Stage.CreateNew('Sphere.usda')
@@ -85,11 +88,15 @@ class GLTF2USD:
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
                     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
-                    print(data)
+                    invert_uvs = []
+                    for uv in data:
+                        new_uv = (uv[0], 1 - uv[1])
+                        invert_uvs.append(new_uv)
+                    print(invert_uvs)
                     print 'texcoord 0'
                     prim_var = UsdGeom.PrimvarsAPI(mesh)
                     uv = prim_var.CreatePrimvar('primvars:st0', Sdf.ValueTypeNames.TexCoord2fArray, 'vertex')
-                    uv.Set(data)
+                    uv.Set(invert_uvs)
 
 
         if 'indices' in primitive:
@@ -110,6 +117,24 @@ class GLTF2USD:
     def _create_preview_surface_material(self, material, parent_path):
         pass
 
+    def _convert_images_to_usd(self):
+        if 'images' in self.gltf_loader.json_data:
+            self.images = []
+            print('images present')
+            for i, image in enumerate(self.gltf_loader.json_data['images']):
+                image_path = os.path.join(self.gltf_loader.root_dir, image['uri'])
+                image_obj = Image.open(image_path)
+                image_name = os.path.join(os.getcwd(), 'texture_{}.png'.format(i))
+                image_obj.save(image_name)
+                self.images.append(ntpath.basename(image_name))
+
+    def _convert_textures_to_usd(self):
+        self._convert_images_to_usd()
+        if 'textures' in self.gltf_loader.json_data:
+            print('textures present')
+
+
+
     def _convert_materials_to_preview_surface(self):
         if 'materials' in self.gltf_loader.json_data:
             self.usd_materials = []
@@ -122,16 +147,35 @@ class GLTF2USD:
                 material_path = Sdf.Path('{0}/{1}'.format(material_path_root, name))
                 usd_material = UsdShade.Material.Define(self.stage, material_path)
                 self.usd_materials.append(usd_material)
-                specular_workflow = usd_material.CreateInput("useSpecularWorkflow", Sdf.ValueTypeNames.Bool)
-                specular_workflow.Set(False)
+                
                 usd_material_surface_output = usd_material.CreateOutput("surface", Sdf.ValueTypeNames.Token)
                 usd_material_displacement_output = usd_material.CreateOutput("displacement", Sdf.ValueTypeNames.Token)
                 pbr_mat = UsdShade.Shader.Define(self.stage, material_path.AppendChild('pbrMat1'))
                 pbr_mat.CreateIdAttr("UsdPreviewSurface")
+                specular_workflow = pbr_mat.CreateInput("useSpecularWorkflow", Sdf.ValueTypeNames.Bool)
+                specular_workflow.Set(False)
                 pbr_mat_surface_output = pbr_mat.CreateOutput("surface", Sdf.ValueTypeNames.Token)
                 pbr_mat_displacement_output = pbr_mat.CreateOutput("displacement", Sdf.ValueTypeNames.Token)
                 usd_material_surface_output.ConnectToSource(pbr_mat_surface_output)
                 usd_material_displacement_output.ConnectToSource(pbr_mat_displacement_output)
+
+                #define uv primvar0
+                primvar_st0 = UsdShade.Shader.Define(self.stage, material_path.AppendChild('primvar_st0'))
+                primvar_st0.CreateIdAttr('UsdPrimvarReader_float2')
+                fallback_st0 = primvar_st0.CreateInput('fallback', Sdf.ValueTypeNames.Float2)
+                fallback_st0.Set((0,0))
+                primvar_st0_varname = primvar_st0.CreateInput('varname', Sdf.ValueTypeNames.Token)
+                primvar_st0_varname.Set('st0')
+                primvar_st0_output = primvar_st0.CreateOutput('result', Sdf.ValueTypeNames.Float2)
+
+                #define uv primvar1
+                primvar_st1 = UsdShade.Shader.Define(self.stage, material_path.AppendChild('primvar_st1'))
+                primvar_st1.CreateIdAttr('UsdPrimvarReader_float2')
+                fallback_st1 = primvar_st1.CreateInput('fallback', Sdf.ValueTypeNames.Float2)
+                fallback_st1.Set((0,0))
+                primvar_st1_varname = primvar_st1.CreateInput('varname', Sdf.ValueTypeNames.Token)
+                primvar_st1_varname.Set('st1')
+                primvar_st1_output = primvar_st1.CreateOutput('result', Sdf.ValueTypeNames.Float2)
                 
                 if 'pbrMetallicRoughness' in material:
                     pbr_metallic_roughness = material['pbrMetallicRoughness']
@@ -146,16 +190,33 @@ class GLTF2USD:
                         metallic_factor = pbr_metallic_roughness['metallicFactor']
                         metallic = pbr_mat.CreateInput('metallic', Sdf.ValueTypeNames.Float)
                         metallic.Set(pbr_metallic_roughness['metallicFactor'])
+                if 'normalTexture' in material:
+                    print('normal texture present')
+                    normal_texture = material['normalTexture']
+                    image_name = self.images[normal_texture['index']]
+                    normal_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('normalTexture'))
+                    normal_shader.CreateIdAttr("UsdUVTexture")
+                    
+                    file_asset = normal_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
+                    file_asset.Set(image_name)
+                    normal_shader_rgb_output = normal_shader.CreateOutput('rgb', Sdf.ValueTypeNames.Color3f)
+                    pbr_mat_normal = pbr_mat.CreateInput('normal', Sdf.ValueTypeNames.Normal3f)
+                    pbr_mat_normal.ConnectToSource(normal_shader_rgb_output)
+                    normal_shader_input = normal_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
+                    normal_shader_fallback = normal_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float4)
+                    normal_shader_fallback.Set((0,0,0,1))
+                    if 'texCoord' in normal_texture and normal_texture['texCoord'] == 1:
+                        normal_shader_input.ConnectToSource(primvar_st1_output)
+                    else:
+                        normal_shader_input.ConnectToSource(primvar_st0_output)
+                    if 'scale' in normal_texture:
+                        scale_vector = normal_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
+                        scale_factor = normal_texture['scale']
+                        scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
 
 
 
-
-
-
-
-
-        
-             
+     
 
     def _get_accessor_data(self, index):
         accessor = self.gltf_loader.json_data['accessors'][index]
@@ -164,6 +225,7 @@ class GLTF2USD:
 
 def convert_to_usd(gltf_file):
     gltf_converter = GLTF2USD(gltf_file)
+    gltf_converter._convert_textures_to_usd()
     gltf_converter._convert_materials_to_preview_surface()
     gltf_converter.convert_nodes_to_xform()
     #gltf_converter.print_gltf_data()
