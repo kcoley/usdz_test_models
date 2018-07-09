@@ -9,7 +9,7 @@ from gltf2loader import GLTF2Loader, PrimitiveMode
 
 from PIL import Image
 
-from pxr import Usd, UsdGeom, Sdf, UsdShade
+from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf
 # stage = Usd.Stage.CreateNew('Sphere.usda')
 # xformPrim = UsdGeom.Xform.Define(stage, '/parent')
 # spherePrim = UsdGeom.Sphere.Define(stage, '/parent/sphere')
@@ -43,16 +43,41 @@ class GLTF2USD:
         if 'nodes' in self.gltf_loader.json_data:
             child_nodes = self._get_child_nodes()
             for i, node in enumerate(self.gltf_loader.json_data['nodes']):
-                xform_name = 'node{}'.format(i)
-                self._convert_node_to_xform(node, xform_name)
+                if i not in child_nodes:
+                    xform_name = '/node{}'.format(i)
+                    self._convert_node_to_xform(node, xform_name)
             self.stage.GetRootLayer().Save()
                 
     def _convert_node_to_xform(self, node, xform_name):
         print(node)
-        xform_path = '/{}'.format(xform_name)
+        xform_path = '{}'.format(xform_name)
+        print(xform_path)
         xformPrim = UsdGeom.Xform.Define(self.stage, xform_path)
+        if 'translation' in node:
+            translation = node['translation']
+            xformPrim.AddTranslateOp().Set((translation[0], translation[1], translation[2]))
+        if 'rotation' in node:
+            rotation = node['rotation']
+            xformPrim.AddOrientOp().Set(Gf.Quatf(rotation[3], (rotation[0], rotation[1], rotation[2])))
+        if 'scale' in node:
+            scale = node['scale']
+            xformPrim.AddScaleOp().Set((scale[0], scale[1], scale[2]))
+        if 'matrix' in node:
+            matrix = node['matrix']
+            xformPrim.AddTransformOp().Set(
+                Gf.Matrix4d(
+                    matrix[0], matrix[1], matrix[2], matrix[3],
+                    matrix[4], matrix[5], matrix[6], matrix[7],
+                    matrix[8], matrix[9], matrix[10], matrix[11],
+                    matrix[12], matrix[13], matrix[14], matrix[15]
+                    )
+            )
         if 'mesh' in node:
             self._convert_mesh_to_xform(self.gltf_loader.json_data['meshes'][node['mesh']], xform_path)
+        if 'children' in node:
+            for child in node['children']:
+                self._convert_node_to_xform(self.gltf_loader.json_data['nodes'][child], xform_path + '/node{}'.format(child))
+
 
     def _convert_mesh_to_xform(self, mesh, parent_path):
         #for each mesh primitive, create a USD mesh
