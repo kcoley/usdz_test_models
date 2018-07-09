@@ -192,31 +192,55 @@ class GLTF2USD:
                         metallic.Set(pbr_metallic_roughness['metallicFactor'])
                 if 'normalTexture' in material:
                     print('normal texture present')
-                    normal_texture = material['normalTexture']
-                    image_name = self.images[normal_texture['index']]
-                    normal_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('normalTexture'))
-                    normal_shader.CreateIdAttr("UsdUVTexture")
+                    occlusion_texture = material['normalTexture']
+                    image_name = self.images[occlusion_texture['index']]
+                    occlusion_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('normalTexture'))
+                    occlusion_shader.CreateIdAttr("UsdUVTexture")
                     
-                    file_asset = normal_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
+                    file_asset = occlusion_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
                     file_asset.Set(image_name)
-                    normal_shader_rgb_output = normal_shader.CreateOutput('rgb', Sdf.ValueTypeNames.Color3f)
-                    pbr_mat_normal = pbr_mat.CreateInput('normal', Sdf.ValueTypeNames.Normal3f)
-                    pbr_mat_normal.ConnectToSource(normal_shader_rgb_output)
-                    normal_shader_input = normal_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
-                    normal_shader_fallback = normal_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float4)
-                    normal_shader_fallback.Set((0,0,0,1))
-                    if 'texCoord' in normal_texture and normal_texture['texCoord'] == 1:
-                        normal_shader_input.ConnectToSource(primvar_st1_output)
+                    occlusion_shader_rgb_output = occlusion_shader.CreateOutput('rgb', Sdf.ValueTypeNames.Color3f)
+                    pbr_mat_occlusion = pbr_mat.CreateInput('normal', Sdf.ValueTypeNames.Normal3f)
+                    pbr_mat_occlusion.ConnectToSource(occlusion_shader_rgb_output)
+                    occlusion_shader_input = occlusion_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
+                    occlusion_shader_fallback = occlusion_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float4)
+                    occlusion_shader_fallback.Set((0,0,0,1))
+                    if 'texCoord' in occlusion_texture and occlusion_texture['texCoord'] == 1:
+                        occlusion_shader_input.ConnectToSource(primvar_st1_output)
                     else:
-                        normal_shader_input.ConnectToSource(primvar_st0_output)
-                    if 'scale' in normal_texture:
-                        scale_vector = normal_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
-                        scale_factor = normal_texture['scale']
+                        occlusion_shader_input.ConnectToSource(primvar_st0_output)
+                    if 'scale' in occlusion_texture:
+                        scale_vector = occlusion_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
+                        scale_factor = occlusion_texture['scale']
+                        scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
+                
+                if 'occlusionTexture' in material:
+                    print('occlusion texture present')
+                    occlusion_texture = material['occlusionTexture']
+                    image_name = self.images[occlusion_texture['index']]
+                    occlusion_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('occlusionTexture'))
+                    occlusion_shader.CreateIdAttr("UsdUVTexture")
+                    
+                    file_asset = occlusion_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
+                    file_asset.Set(image_name)
+                    occlusion_shader_rgb_output = occlusion_shader.CreateOutput('r', Sdf.ValueTypeNames.Float)
+                    pbr_mat_occlusion = pbr_mat.CreateInput('occlusion', Sdf.ValueTypeNames.Float)
+                    pbr_mat_occlusion.ConnectToSource(occlusion_shader_rgb_output)
+                    occlusion_shader_input = occlusion_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
+                    occlusion_shader_fallback = occlusion_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float)
+                    occlusion_shader_fallback.Set(0)
+                    if 'texCoord' in occlusion_texture and occlusion_texture['texCoord'] == 1:
+                        occlusion_shader_input.ConnectToSource(primvar_st1_output)
+                    else:
+                        occlusion_shader_input.ConnectToSource(primvar_st0_output)
+                    if 'strength' in occlusion_texture:
+                        scale_vector = occlusion_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
+                        scale_factor = occlusion_texture['strength']
                         scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
 
 
 
-     
+
 
     def _get_accessor_data(self, index):
         accessor = self.gltf_loader.json_data['accessors'][index]
