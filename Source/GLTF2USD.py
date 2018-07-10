@@ -297,33 +297,98 @@ class GLTF2USD:
                         scale_factor = material['emissiveFactor']
                         scale_vector.Set((scale_factor[0], scale_factor[1], scale_factor[2], 1))
 
-                if 'baseColorTexture' in pbr_metallic_roughness:
-                    print('base color texture present')
-                    base_color_texture = pbr_metallic_roughness['baseColorTexture']
-                    image_name = self.images[base_color_texture['index']]
-                    base_color_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('baseColorTexture'))
-                    base_color_texture_shader.CreateIdAttr("UsdUVTexture")
-                    
-                    file_asset = base_color_texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
-                    file_asset.Set(image_name)
-                    base_color_texture_shader_rgb_output = base_color_texture_shader.CreateOutput('rgb', Sdf.ValueTypeNames.Color3f)
-                    pbr_mat_base_color_texture = pbr_mat.CreateInput('diffuseColor', Sdf.ValueTypeNames.Color3f)
-                    pbr_mat_base_color_texture.ConnectToSource(base_color_texture_shader_rgb_output)
 
-                    base_color_texture_shader_a_output = base_color_texture_shader.CreateOutput('a', Sdf.ValueTypeNames.Float)
-                    pbr_mat_base_color_texture_alpha = pbr_mat.CreateInput('opacity', Sdf.ValueTypeNames.Float)
-                    pbr_mat_base_color_texture_alpha.ConnectToSource(base_color_texture_shader_a_output)
-                    base_color_texture_shader_input = base_color_texture_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
-                    base_color_texture_shader_fallback = base_color_texture_shader.CreateInput('fallback', Sdf.ValueTypeNames.Color4f)
-                    base_color_texture_shader_fallback.Set((1, 1, 1, 1))
-                    if 'texCoord' in base_color_texture and base_color_texture['texCoord'] == 1:
-                        base_color_texture_shader_input.ConnectToSource(primvar_st1_output)
-                    else:
-                        base_color_texture_shader_input.ConnectToSource(primvar_st0_output)
-                    if 'baseColorFactor' in pbr_metallic_roughness:
-                        scale_vector = base_color_texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
-                        scale_factor = pbr_metallic_roughness['baseColorFactor']
-                        scale_vector.Set((scale_factor[0], scale_factor[1], scale_factor[2], scale_factor[3]))
+                if 'baseColorTexture' in pbr_metallic_roughness:
+                    base_color_factor = pbr_metallic_roughness['baseColorFactor'] if 'baseColorFactor' in pbr_metallic_roughness else [1,1,1,1]
+                    fallback_base_color = (base_color_factor[0], base_color_factor[1], base_color_factor[2])
+                    scale_base_color_factor = base_color_factor
+                    base_color_components = {
+                        'rgb': 
+                        {'sdf_type' : Sdf.ValueTypeNames.Color3f, 'name': 'diffuseColor'}
+                    }
+
+                    self._convert_texture_to_usd(
+                        pbr_mat=pbr_mat, 
+                        gltf_texture=pbr_metallic_roughness['baseColorTexture'], 
+                        gltf_texture_name='baseColorTexture', 
+                        color_components=base_color_components, 
+                        scale_factor=scale_base_color_factor, 
+                        fallback_factor=fallback_base_color, 
+                        material_path=material_path,
+                        fallback_type=Sdf.ValueTypeNames.Color3f,
+                        primvar_st0_output=primvar_st0_output,
+                        primvar_st1_output=primvar_st1_output
+                    )
+
+                if 'metallicRoughnessTexture' in pbr_metallic_roughness:
+                    metallic_factor = pbr_metallic_roughness['metallicFactor'] if 'metallicFactor' in pbr_metallic_roughness else 1.0
+                    fallback_metallic = 1.0
+                    scale_metallic = [metallic_factor] * 4
+                    metallic_color_components = {
+                        'b': 
+                        {'sdf_type' : Sdf.ValueTypeNames.Float, 'name': 'metallic'}
+                    }
+
+                    roughness_factor = pbr_metallic_roughness['roughnessFactor'] if 'roughnessFactor' in pbr_metallic_roughness else 1.0
+                    fallback_roughness = roughness_factor
+                    scale_roughness = [roughness_factor] * 4
+                    roughness_color_components = {
+                        'g': 
+                        {'sdf_type': Sdf.ValueTypeNames.Float, 'name': 'roughness'},
+                    }
+                    
+
+                    self._convert_texture_to_usd(
+                        pbr_mat=pbr_mat, 
+                        gltf_texture=pbr_metallic_roughness['metallicRoughnessTexture'], 
+                        gltf_texture_name='metallicTexture', 
+                        color_components=metallic_color_components, 
+                        scale_factor=scale_metallic, 
+                        fallback_factor=fallback_metallic, 
+                        material_path=material_path,
+                        fallback_type=Sdf.ValueTypeNames.Float,
+                        primvar_st0_output=primvar_st0_output,
+                        primvar_st1_output=primvar_st1_output
+                    )
+
+                    self._convert_texture_to_usd(
+                        pbr_mat=pbr_mat, 
+                        gltf_texture=pbr_metallic_roughness['metallicRoughnessTexture'], 
+                        gltf_texture_name='roughnessTexture', 
+                        color_components=roughness_color_components, 
+                        scale_factor=scale_roughness, 
+                        fallback_factor=fallback_roughness, 
+                        material_path=material_path,
+                        fallback_type=Sdf.ValueTypeNames.Float,
+                        primvar_st0_output=primvar_st0_output,
+                        primvar_st1_output=primvar_st1_output
+                    )
+
+    def _convert_texture_to_usd(self, primvar_st0_output, primvar_st1_output, pbr_mat, gltf_texture, gltf_texture_name, color_components, scale_factor, fallback_factor, material_path, fallback_type):
+        image_name = self.images[gltf_texture['index']]
+        texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild(gltf_texture_name))
+        texture_shader.CreateIdAttr("UsdUVTexture")
+        
+        file_asset = texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
+        file_asset.Set(image_name)
+
+        for color_params, usd_color_params in color_components.iteritems():
+            sdf_type = usd_color_params['sdf_type']
+            texture_shader_output = texture_shader.CreateOutput(color_params, sdf_type)
+            pbr_mat_texture = pbr_mat.CreateInput(usd_color_params['name'], sdf_type)
+            pbr_mat_texture.ConnectToSource(texture_shader_output)
+
+        texture_shader_input = texture_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
+        texture_shader_fallback = texture_shader.CreateInput('fallback', fallback_type)
+        texture_shader_fallback.Set(fallback_factor)
+        if 'texCoord' in gltf_texture and gltf_texture['texCoord'] == 1:
+            texture_shader_input.ConnectToSource(primvar_st1_output)
+        else:
+            texture_shader_input.ConnectToSource(primvar_st0_output)
+            
+        scale_vector = texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
+        scale_vector.Set((scale_factor[0], scale_factor[1], scale_factor[2], scale_factor[3]))
+
     
 
     def _get_accessor_data(self, index):
