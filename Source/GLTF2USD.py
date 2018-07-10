@@ -3,11 +3,12 @@ import json
 import ntpath
 import numpy
 import os
+import shutil
 from pprint import pprint
 
 from gltf2loader import GLTF2Loader, PrimitiveMode
 
-from PIL import Image
+#from PIL import Image
 
 from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf
 # stage = Usd.Stage.CreateNew('Sphere.usda')
@@ -158,9 +159,11 @@ class GLTF2USD:
             print('images present')
             for i, image in enumerate(self.gltf_loader.json_data['images']):
                 image_path = os.path.join(self.gltf_loader.root_dir, image['uri'])
-                image_obj = Image.open(image_path)
-                image_name = os.path.join(os.getcwd(), 'texture_{}.png'.format(i))
-                image_obj.save(image_name)
+                image_name = os.path.join(os.getcwd(), ntpath.basename(image_path))
+                shutil.copyfile(image_path, image_name)
+                #image_obj = Image.open(image_path)
+                #image_name = os.path.join(os.getcwd(), 'texture_{}.png'.format(i))
+                #image_obj.save(image_name)
                 self.images.append(ntpath.basename(image_name))
 
     def _convert_textures_to_usd(self):
