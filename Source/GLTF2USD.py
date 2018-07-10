@@ -274,28 +274,26 @@ class GLTF2USD:
                         scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
 
                 if 'emissiveTexture' in material:
-                    print('emissive texture present')
-                    base_color_texture = material['emissiveTexture']
-                    image_name = self.images[base_color_texture['index']]
-                    base_color_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('emissiveTexture'))
-                    base_color_texture_shader.CreateIdAttr("UsdUVTexture")
-                    
-                    file_asset = base_color_texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
-                    file_asset.Set(image_name)
-                    base_color_texture_shader_rgb_output = base_color_texture_shader.CreateOutput('rgb', Sdf.ValueTypeNames.Color3f)
-                    pbr_mat_base_color_texture = pbr_mat.CreateInput('emissiveColor', Sdf.ValueTypeNames.Color3f)
-                    pbr_mat_base_color_texture.ConnectToSource(base_color_texture_shader_rgb_output)
-                    base_color_texture_shader_input = base_color_texture_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
-                    base_color_texture_shader_fallback = base_color_texture_shader.CreateInput('fallback', Sdf.ValueTypeNames.Color3f)
-                    base_color_texture_shader_fallback.Set((0, 0, 0))
-                    if 'texCoord' in base_color_texture and base_color_texture['texCoord'] == 1:
-                        base_color_texture_shader_input.ConnectToSource(primvar_st1_output)
-                    else:
-                        base_color_texture_shader_input.ConnectToSource(primvar_st0_output)
-                    if 'emissiveFactor' in material:
-                        scale_vector = base_color_texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
-                        scale_factor = material['emissiveFactor']
-                        scale_vector.Set((scale_factor[0], scale_factor[1], scale_factor[2], 1))
+                    emissive_factor = material['emissiveFactor'] if 'emissiveFactor' in material else [0,0,0]
+                    fallback_emissive_color = tuple(emissive_factor[0:3])
+                    scale_emissive_factor = (emissive_factor[0], emissive_factor[1], emissive_factor[2], 1)
+                    emissive_components = {
+                        'rgb': 
+                        {'sdf_type' : Sdf.ValueTypeNames.Color3f, 'name': 'emissiveColor'}
+                    }
+
+                    self._convert_texture_to_usd(
+                        pbr_mat=pbr_mat, 
+                        gltf_texture=material['emissiveTexture'], 
+                        gltf_texture_name='emissiveTexture', 
+                        color_components=emissive_components, 
+                        scale_factor=scale_emissive_factor, 
+                        fallback_factor=fallback_emissive_color, 
+                        material_path=material_path,
+                        fallback_type=Sdf.ValueTypeNames.Color3f,
+                        primvar_st0_output=primvar_st0_output,
+                        primvar_st1_output=primvar_st1_output
+                    )
 
 
                 if 'baseColorTexture' in pbr_metallic_roughness:
