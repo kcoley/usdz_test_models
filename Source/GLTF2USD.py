@@ -4,7 +4,6 @@ import ntpath
 import numpy
 import os
 import shutil
-from pprint import pprint
 
 from gltf2loader import GLTF2Loader, PrimitiveMode
 
@@ -16,21 +15,20 @@ from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf
 # spherePrim = UsdGeom.Sphere.Define(stage, '/parent/sphere')
 # stage.GetRootLayer().Save()
 
+'''
+Class for converting glTF 2.0 models to Pixar's USD format.  Currently openly supports .gltf files
+with non-embedded data and exports to .usda .
+'''
 class GLTF2USD:
     def __init__(self, gltf_file):
         self.gltf_loader = GLTF2Loader(gltf_file)
         file_base_name = ntpath.basename(gltf_file)
         usd_name = '{base_name}.usda'.format(base_name =os.path.splitext(file_base_name)[0])
-        print usd_name
         self.stage = Usd.Stage.CreateNew(usd_name)
 
-    def _convert_to_gltf_document(self, gltf_file):
-        with open(gltf_file) as f:
-            self.json_data = json.load(f)
-            
-    def print_gltf_data(self):
-        pprint(self.json_data)
-
+    '''
+    Returns all the children nodes
+    '''
     def _get_child_nodes(self):
         child_nodes = set()
         for node in self.gltf_loader.json_data['nodes']:
@@ -39,20 +37,27 @@ class GLTF2USD:
 
         return child_nodes
     
+    '''
+    Converts the glTF nodes to USD Xforms.  The models get a parent Xform that scales the geometry by 100 to convert from meters to centimeters.
+    '''
     def convert_nodes_to_xform(self):
+        parent_root = '/root'
+        parent_transform = UsdGeom.Xform.Define(self.stage, parent_root)
+        parent_transform.AddScaleOp().Set((100, 100, 100))
         child_nodes = self._get_child_nodes()
         if 'nodes' in self.gltf_loader.json_data:
             child_nodes = self._get_child_nodes()
             for i, node in enumerate(self.gltf_loader.json_data['nodes']):
                 if i not in child_nodes:
-                    xform_name = '/node{}'.format(i)
+                    xform_name = '{parent_root}/node{index}'.format(parent_root=parent_root, index=i)
                     self._convert_node_to_xform(node, xform_name)
             self.stage.GetRootLayer().Save()
-                
+
+    '''
+    Converts a glTF node to a USD transform.
+    '''        
     def _convert_node_to_xform(self, node, xform_name):
-        print(node)
         xform_path = '{}'.format(xform_name)
-        print(xform_path)
         xformPrim = UsdGeom.Xform.Define(self.stage, xform_path)
         if 'scale' in node:
             scale = node['scale']
@@ -82,7 +87,9 @@ class GLTF2USD:
             for child in node['children']:
                 self._convert_node_to_xform(self.gltf_loader.json_data['nodes'][child], xform_path + '/node{}'.format(child))
 
-
+    '''
+    Converts a glTF mesh to a USD Xform.  Each primitive becomes a submesh of the Xform.
+    '''
     def _convert_mesh_to_xform(self, mesh, parent_path):
         #for each mesh primitive, create a USD mesh
         if 'primitives' in mesh:
@@ -90,39 +97,39 @@ class GLTF2USD:
                 mesh_primitive_name = 'mesh_primitive{}'.format(i)
                 self._convert_primitive_to_mesh(name=mesh_primitive_name, primitive=mesh_primitive, parent_path=parent_path)
 
+    '''
+    Converts a primitive to a USD mesh
+    '''
     def _convert_primitive_to_mesh(self, name, primitive, parent_path):
         mesh = UsdGeom.Mesh.Define(self.stage, parent_path + '/{}'.format(name))
-        print('mesh primitive')
         buffer = self.gltf_loader.json_data['buffers'][0]
         if 'material' in primitive:
-            print('material present')
             usd_material = self.usd_materials[primitive['material']]
             UsdShade.MaterialBindingAPI(mesh).Bind(usd_material)
         if 'attributes' in primitive:
             for attribute in primitive['attributes']:
-                print(attribute)
                 if attribute == 'POSITION':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
                     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
                     mesh.CreatePointsAttr(data)
-                    print(data)
+                # if attribute == 'NORMAL':
+                #     accessor_index = primitive['attributes'][attribute]
+                #     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
+                #     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
+                #     inverted_normals = []
+                #     for normal in data:
+                #         new_normal = (-normal[0], -normal[1], -normal[2])
+                #         inverted_normals.append(new_normal)
                     
-                    print 'position attribute'
-                if attribute == 'NORMAL':
-                    accessor_index = primitive['attributes'][attribute]
-                    accessor = self.gltf_loader.json_data['accessors'][accessor_index]
-                    data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
-                    mesh.CreateNormalsAttr(data)
-                    print(data)
-                    print 'normal attribute'
+                #     mesh.CreateNormalsAttr(inverted_normals)
+                #     print(data)
+                #     print 'normal attribute'
                 if attribute == 'COLOR':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
                     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
                     mesh.CreateColorsAttr(data)
-                    print(data)
-                    print 'color attribute'
                 if attribute == 'TEXCOORD_0':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
@@ -131,18 +138,14 @@ class GLTF2USD:
                     for uv in data:
                         new_uv = (uv[0], 1 - uv[1])
                         invert_uvs.append(new_uv)
-                    print(invert_uvs)
-                    print 'texcoord 0'
                     prim_var = UsdGeom.PrimvarsAPI(mesh)
                     uv = prim_var.CreatePrimvar('primvars:st0', Sdf.ValueTypeNames.TexCoord2fArray, 'vertex')
                     uv.Set(invert_uvs)
 
 
         if 'indices' in primitive:
-            print('indices present')
+            #TODO: Need to support glTF primitive modes.  Currently only Triangle mode is supported
             indices = self.gltf_loader.get_data(buffer=buffer, accessor=self.gltf_loader.json_data['accessors'][primitive['indices']])
-            print(indices)
-            #TODO: Compute faces properly
             
             num_faces = len(indices)/3
             face_count = [3] * num_faces
@@ -150,20 +153,15 @@ class GLTF2USD:
             mesh.CreateFaceVertexIndicesAttr(indices)
         else:
             position_accessor =  self.gltf_loader.json_data['accessors'][primitive['attributes']['POSITION']]
-            print(position_accessor)
             count = position_accessor['count']
             num_faces = count/3
             indices = range(0, count)
-            print(indices)
             face_count = [3] * num_faces
             mesh.CreateFaceVertexCountsAttr(face_count)
             mesh.CreateFaceVertexIndicesAttr(indices)
 
-
-
         if 'material' in primitive:
             material = self.gltf_loader.json_data['materials'][primitive['material']]
-            print('material present')
 
     def _create_preview_surface_material(self, material, parent_path):
         pass
@@ -171,7 +169,6 @@ class GLTF2USD:
     def _convert_images_to_usd(self):
         if 'images' in self.gltf_loader.json_data:
             self.images = []
-            print('images present')
             for i, image in enumerate(self.gltf_loader.json_data['images']):
                 image_path = os.path.join(self.gltf_loader.root_dir, image['uri'])
                 image_name = os.path.join(os.getcwd(), ntpath.basename(image_path))
@@ -183,15 +180,12 @@ class GLTF2USD:
 
     def _convert_textures_to_usd(self):
         self._convert_images_to_usd()
-        if 'textures' in self.gltf_loader.json_data:
-            print('textures present')
 
 
 
     def _convert_materials_to_preview_surface(self):
         if 'materials' in self.gltf_loader.json_data:
             self.usd_materials = []
-            print('materials present')
             material_path_root = '/Materials'
             scope = UsdGeom.Scope.Define(self.stage, material_path_root)
 
@@ -232,7 +226,6 @@ class GLTF2USD:
                 
                 if 'pbrMetallicRoughness' in material:
                     pbr_metallic_roughness = material['pbrMetallicRoughness']
-                    print('pbr present')
                     if 'baseColorFactor' in pbr_metallic_roughness:
                         diffuse_color = pbr_mat.CreateInput("diffuseColor", Sdf.ValueTypeNames.Color3f)
                         base_color_factor = pbr_metallic_roughness['baseColorFactor']
@@ -244,7 +237,6 @@ class GLTF2USD:
                         metallic = pbr_mat.CreateInput('metallic', Sdf.ValueTypeNames.Float)
                         metallic.Set(pbr_metallic_roughness['metallicFactor'])
                 if 'normalTexture' in material:
-                    print('normal texture present')
                     normal_texture = material['normalTexture']
                     image_name = self.images[normal_texture['index']]
                     normal_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('normalTexture'))
@@ -268,7 +260,6 @@ class GLTF2USD:
                         scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
                 
                 if 'occlusionTexture' in material:
-                    print('occlusion texture present')
                     base_color_texture = material['occlusionTexture']
                     image_name = self.images[base_color_texture['index']]
                     base_color_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('occlusionTexture'))
@@ -409,7 +400,6 @@ class GLTF2USD:
 
     def _get_accessor_data(self, index):
         accessor = self.gltf_loader.json_data['accessors'][index]
-        print(accessor)
 
 
 def convert_to_usd(gltf_file):
@@ -417,7 +407,6 @@ def convert_to_usd(gltf_file):
     gltf_converter._convert_textures_to_usd()
     gltf_converter._convert_materials_to_preview_surface()
     gltf_converter.convert_nodes_to_xform()
-    #gltf_converter.print_gltf_data()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert glTF to USD')
