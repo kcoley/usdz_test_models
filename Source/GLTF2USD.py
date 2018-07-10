@@ -54,15 +54,18 @@ class GLTF2USD:
         xform_path = '{}'.format(xform_name)
         print(xform_path)
         xformPrim = UsdGeom.Xform.Define(self.stage, xform_path)
-        if 'translation' in node:
-            translation = node['translation']
-            xformPrim.AddTranslateOp().Set((translation[0], translation[1], translation[2]))
-        if 'rotation' in node:
-            rotation = node['rotation']
-            xformPrim.AddOrientOp().Set(Gf.Quatf(rotation[3], (rotation[0], rotation[1], rotation[2])))
         if 'scale' in node:
             scale = node['scale']
             xformPrim.AddScaleOp().Set((scale[0], scale[1], scale[2]))
+
+        if 'rotation' in node:
+            rotation = node['rotation']
+            xformPrim.AddOrientOp().Set(Gf.Quatf(rotation[3], (rotation[0], rotation[1], rotation[2])))
+
+        if 'translation' in node:
+            translation = node['translation']
+            xformPrim.AddTranslateOp().Set((translation[0], translation[1], translation[2]))
+        
         if 'matrix' in node:
             matrix = node['matrix']
             xformPrim.AddTransformOp().Set(
@@ -145,6 +148,18 @@ class GLTF2USD:
             face_count = [3] * num_faces
             mesh.CreateFaceVertexCountsAttr(face_count)
             mesh.CreateFaceVertexIndicesAttr(indices)
+        else:
+            position_accessor =  self.gltf_loader.json_data['accessors'][primitive['attributes']['POSITION']]
+            print(position_accessor)
+            count = position_accessor['count']
+            num_faces = count/3
+            indices = range(0, count)
+            print(indices)
+            face_count = [3] * num_faces
+            mesh.CreateFaceVertexCountsAttr(face_count)
+            mesh.CreateFaceVertexIndicesAttr(indices)
+
+
 
         if 'material' in primitive:
             material = self.gltf_loader.json_data['materials'][primitive['material']]
