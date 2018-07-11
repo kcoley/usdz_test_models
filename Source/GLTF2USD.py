@@ -41,6 +41,7 @@ class GLTF2USD:
         parent_root = '/root'
         parent_transform = UsdGeom.Xform.Define(self.stage, parent_root)
         parent_transform.AddScaleOp().Set((100, 100, 100))
+        
         child_nodes = self._get_child_nodes()
         if 'nodes' in self.gltf_loader.json_data:
             child_nodes = self._get_child_nodes()
@@ -115,13 +116,8 @@ class GLTF2USD:
                 if attribute == 'NORMAL':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
-                    data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
-                    inverted_normals = []
-                    for normal in data:
-                        new_normal = (normal[0], normal[1], normal[2])
-                        inverted_normals.append(new_normal)
-                    
-                    mesh.CreateNormalsAttr(inverted_normals)
+                    data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)                  
+                    mesh.CreateNormalsAttr(data)
 
                 if attribute == 'COLOR':
                     accessor_index = primitive['attributes'][attribute]
@@ -161,9 +157,6 @@ class GLTF2USD:
         if 'material' in primitive:
             material = self.gltf_loader.json_data['materials'][primitive['material']]
 
-    def _create_preview_surface_material(self, material, parent_path):
-        pass
-
     def _convert_images_to_usd(self):
         if 'images' in self.gltf_loader.json_data:
             self.images = []
@@ -171,15 +164,7 @@ class GLTF2USD:
                 image_path = os.path.join(self.gltf_loader.root_dir, image['uri'])
                 image_name = os.path.join(os.getcwd(), ntpath.basename(image_path))
                 shutil.copyfile(image_path, image_name)
-                #image_obj = Image.open(image_path)
-                #image_name = os.path.join(os.getcwd(), 'texture_{}.png'.format(i))
-                #image_obj.save(image_name)
                 self.images.append(ntpath.basename(image_name))
-
-    def _convert_textures_to_usd(self):
-        self._convert_images_to_usd()
-
-
 
     def _convert_materials_to_preview_surface(self):
         if 'materials' in self.gltf_loader.json_data:
@@ -302,7 +287,6 @@ class GLTF2USD:
                         primvar_st1_output=primvar_st1_output
                     )
 
-
                 if 'baseColorTexture' in pbr_metallic_roughness:
                     base_color_factor = pbr_metallic_roughness['baseColorFactor'] if 'baseColorFactor' in pbr_metallic_roughness else [1,1,1,1]
                     fallback_base_color = (base_color_factor[0], base_color_factor[1], base_color_factor[2])
@@ -370,12 +354,17 @@ class GLTF2USD:
                         primvar_st0_output=primvar_st0_output,
                         primvar_st1_output=primvar_st1_output
                     )
+
     def create_metallic_roughness_to_grayscale_images(self, image):
         image_base_name = ntpath.basename(image)
         roughness_texture_name = 'Roughness_{}'.format(image_base_name)
         metallic_texture_name = 'Metallic_{}'.format(image_base_name)
 
         img = Image.open(image)
+
+        if img.mode == 'P':
+            #convert paletted image to RGB
+            img = img.convert('RGB')
         channels = img.split()
         #get roughness
         channels[1].save(roughness_texture_name)
@@ -383,9 +372,6 @@ class GLTF2USD:
         channels[2].save(metallic_texture_name)
 
         return {'metallic': metallic_texture_name, 'roughness': roughness_texture_name}
-
-
-        
 
     '''
     Converts a glTF texture to USD
@@ -415,17 +401,12 @@ class GLTF2USD:
         scale_vector = texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
         scale_vector.Set((scale_factor[0], scale_factor[1], scale_factor[2], scale_factor[3]))
 
-    
-
-    def _get_accessor_data(self, index):
-        accessor = self.gltf_loader.json_data['accessors'][index]
 
 '''
 Converts a glTF file to USD
 '''
 def convert_to_usd(gltf_file, verbose=False):
     gltf_converter = GLTF2USD(gltf_file, verbose)
-    #gltf_converter._convert_textures_to_usd()
     gltf_converter._convert_images_to_usd()
     gltf_converter._convert_materials_to_preview_surface()
     gltf_converter.convert_nodes_to_xform()
