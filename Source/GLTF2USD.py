@@ -239,28 +239,28 @@ class GLTF2USD:
                         metallic_factor = pbr_metallic_roughness['metallicFactor']
                         metallic = pbr_mat.CreateInput('metallic', Sdf.ValueTypeNames.Float)
                         metallic.Set(pbr_metallic_roughness['metallicFactor'])
-                # if 'normalTexture' in material:
-                #     normal_texture = material['normalTexture']
-                #     image_name = self.images[normal_texture['index']]
-                #     normal_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('normalTexture'))
-                #     normal_texture_shader.CreateIdAttr("UsdUVTexture")
+                if 'normalTexture' in material:
+                    normal_texture = material['normalTexture']
+                    image_name = self.images[normal_texture['index']]
+                    normal_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('normalTexture'))
+                    normal_texture_shader.CreateIdAttr("UsdUVTexture")
                     
-                #     file_asset = normal_texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
-                #     file_asset.Set(image_name)
-                #     normal_texture_shader_rgb_output = normal_texture_shader.CreateOutput('rgb', Sdf.ValueTypeNames.Color3f)
-                #     pbr_mat_base_color_texture = pbr_mat.CreateInput('normal', Sdf.ValueTypeNames.Normal3f)
-                #     pbr_mat_base_color_texture.ConnectToSource(normal_texture_shader_rgb_output)
-                #     normal_texture_shader_input = normal_texture_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
-                #     normal_texture_shader_fallback = normal_texture_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float4)
-                #     normal_texture_shader_fallback.Set((0,0,0,1))
-                #     if 'texCoord' in normal_texture and normal_texture['texCoord'] == 1:
-                #         normal_texture_shader_input.ConnectToSource(primvar_st1_output)
-                #     else:
-                #         normal_texture_shader_input.ConnectToSource(primvar_st0_output)
-                #     if 'scale' in normal_texture:
-                #         scale_vector = normal_texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
-                #         scale_factor = normal_texture['scale']
-                #         scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
+                    file_asset = normal_texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
+                    file_asset.Set(image_name)
+                    normal_texture_shader_rgb_output = normal_texture_shader.CreateOutput('rgb', Sdf.ValueTypeNames.Color3f)
+                    pbr_mat_base_color_texture = pbr_mat.CreateInput('normal', Sdf.ValueTypeNames.Normal3f)
+                    pbr_mat_base_color_texture.ConnectToSource(normal_texture_shader_rgb_output)
+                    normal_texture_shader_input = normal_texture_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
+                    normal_texture_shader_fallback = normal_texture_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float4)
+                    normal_texture_shader_fallback.Set((0,0,0,1))
+                    if 'texCoord' in normal_texture and normal_texture['texCoord'] == 1:
+                        normal_texture_shader_input.ConnectToSource(primvar_st1_output)
+                    else:
+                        normal_texture_shader_input.ConnectToSource(primvar_st0_output)
+                    if 'scale' in normal_texture:
+                        scale_vector = normal_texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
+                        scale_factor = normal_texture['scale']
+                        scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
                 
                 if 'occlusionTexture' in material:
                     base_color_texture = material['occlusionTexture']
