@@ -10,10 +10,6 @@ from gltf2loader import GLTF2Loader, PrimitiveMode
 from PIL import Image
 
 from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf
-# stage = Usd.Stage.CreateNew('Sphere.usda')
-# xformPrim = UsdGeom.Xform.Define(stage, '/parent')
-# spherePrim = UsdGeom.Sphere.Define(stage, '/parent/sphere')
-# stage.GetRootLayer().Save()
 
 '''
 Class for converting glTF 2.0 models to Pixar's USD format.  Currently openly supports .gltf files
@@ -126,8 +122,7 @@ class GLTF2USD:
                         inverted_normals.append(new_normal)
                     
                     mesh.CreateNormalsAttr(inverted_normals)
-                    print(data)
-                    print 'normal attribute'
+
                 if attribute == 'COLOR':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
@@ -392,7 +387,9 @@ class GLTF2USD:
 
         
 
-
+    '''
+    Converts a glTF texture to USD
+    '''
     def _convert_texture_to_usd(self, primvar_st0_output, primvar_st1_output, pbr_mat, gltf_texture, gltf_texture_name, color_components, scale_factor, fallback_factor, material_path, fallback_type):
         image_name = gltf_texture if (isinstance(gltf_texture, basestring)) else self.images[gltf_texture['index']]
         texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild(gltf_texture_name))
