@@ -7,7 +7,7 @@ import shutil
 
 from gltf2loader import GLTF2Loader, PrimitiveMode
 
-#from PIL import Image
+from PIL import Image
 
 from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf
 # stage = Usd.Stage.CreateNew('Sphere.usda')
@@ -20,8 +20,9 @@ Class for converting glTF 2.0 models to Pixar's USD format.  Currently openly su
 with non-embedded data and exports to .usda .
 '''
 class GLTF2USD:
-    def __init__(self, gltf_file):
+    def __init__(self, gltf_file, verbose):
         self.gltf_loader = GLTF2Loader(gltf_file)
+        self.verbose = verbose
         file_base_name = ntpath.basename(gltf_file)
         usd_name = '{base_name}.usda'.format(base_name =os.path.splitext(file_base_name)[0])
         self.stage = Usd.Stage.CreateNew(usd_name)
@@ -38,7 +39,7 @@ class GLTF2USD:
         return child_nodes
     
     '''
-    Converts the glTF nodes to USD Xforms.  The models get a parent Xform that scales the geometry by 100 to convert from meters to centimeters.
+    Converts the glTF nodes to USD Xforms.  The models get a parent Xform that scales the geometry by 100 to convert from meters (glTF) to centimeters (USD).
     '''
     def convert_nodes_to_xform(self):
         parent_root = '/root'
@@ -52,6 +53,8 @@ class GLTF2USD:
                     xform_name = '{parent_root}/node{index}'.format(parent_root=parent_root, index=i)
                     self._convert_node_to_xform(node, xform_name)
             self.stage.GetRootLayer().Save()
+        if self.verbose:
+            print('Conversion complete!')
 
     '''
     Converts a glTF node to a USD transform.
@@ -113,18 +116,18 @@ class GLTF2USD:
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
                     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
                     mesh.CreatePointsAttr(data)
-                # if attribute == 'NORMAL':
-                #     accessor_index = primitive['attributes'][attribute]
-                #     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
-                #     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
-                #     inverted_normals = []
-                #     for normal in data:
-                #         new_normal = (-normal[0], -normal[1], -normal[2])
-                #         inverted_normals.append(new_normal)
+                if attribute == 'NORMAL':
+                    accessor_index = primitive['attributes'][attribute]
+                    accessor = self.gltf_loader.json_data['accessors'][accessor_index]
+                    data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
+                    inverted_normals = []
+                    for normal in data:
+                        new_normal = (normal[0], normal[1], normal[2])
+                        inverted_normals.append(new_normal)
                     
-                #     mesh.CreateNormalsAttr(inverted_normals)
-                #     print(data)
-                #     print 'normal attribute'
+                    mesh.CreateNormalsAttr(inverted_normals)
+                    print(data)
+                    print 'normal attribute'
                 if attribute == 'COLOR':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
@@ -236,28 +239,28 @@ class GLTF2USD:
                         metallic_factor = pbr_metallic_roughness['metallicFactor']
                         metallic = pbr_mat.CreateInput('metallic', Sdf.ValueTypeNames.Float)
                         metallic.Set(pbr_metallic_roughness['metallicFactor'])
-                if 'normalTexture' in material:
-                    normal_texture = material['normalTexture']
-                    image_name = self.images[normal_texture['index']]
-                    normal_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('normalTexture'))
-                    normal_texture_shader.CreateIdAttr("UsdUVTexture")
+                # if 'normalTexture' in material:
+                #     normal_texture = material['normalTexture']
+                #     image_name = self.images[normal_texture['index']]
+                #     normal_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('normalTexture'))
+                #     normal_texture_shader.CreateIdAttr("UsdUVTexture")
                     
-                    file_asset = normal_texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
-                    file_asset.Set(image_name)
-                    normal_texture_shader_rgb_output = normal_texture_shader.CreateOutput('rgb', Sdf.ValueTypeNames.Color3f)
-                    pbr_mat_base_color_texture = pbr_mat.CreateInput('normal', Sdf.ValueTypeNames.Normal3f)
-                    pbr_mat_base_color_texture.ConnectToSource(normal_texture_shader_rgb_output)
-                    normal_texture_shader_input = normal_texture_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
-                    normal_texture_shader_fallback = normal_texture_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float4)
-                    normal_texture_shader_fallback.Set((0,0,0,1))
-                    if 'texCoord' in normal_texture and normal_texture['texCoord'] == 1:
-                        normal_texture_shader_input.ConnectToSource(primvar_st1_output)
-                    else:
-                        normal_texture_shader_input.ConnectToSource(primvar_st0_output)
-                    if 'scale' in normal_texture:
-                        scale_vector = normal_texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
-                        scale_factor = normal_texture['scale']
-                        scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
+                #     file_asset = normal_texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
+                #     file_asset.Set(image_name)
+                #     normal_texture_shader_rgb_output = normal_texture_shader.CreateOutput('rgb', Sdf.ValueTypeNames.Color3f)
+                #     pbr_mat_base_color_texture = pbr_mat.CreateInput('normal', Sdf.ValueTypeNames.Normal3f)
+                #     pbr_mat_base_color_texture.ConnectToSource(normal_texture_shader_rgb_output)
+                #     normal_texture_shader_input = normal_texture_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
+                #     normal_texture_shader_fallback = normal_texture_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float4)
+                #     normal_texture_shader_fallback.Set((0,0,0,1))
+                #     if 'texCoord' in normal_texture and normal_texture['texCoord'] == 1:
+                #         normal_texture_shader_input.ConnectToSource(primvar_st1_output)
+                #     else:
+                #         normal_texture_shader_input.ConnectToSource(primvar_st0_output)
+                #     if 'scale' in normal_texture:
+                #         scale_vector = normal_texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
+                #         scale_factor = normal_texture['scale']
+                #         scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
                 
                 if 'occlusionTexture' in material:
                     base_color_texture = material['occlusionTexture']
@@ -328,6 +331,8 @@ class GLTF2USD:
                     )
 
                 if 'metallicRoughnessTexture' in pbr_metallic_roughness:
+                    metallic_roughness_texture_file = os.path.join(self.gltf_loader.root_dir, self.gltf_loader.json_data['images'][pbr_metallic_roughness['metallicRoughnessTexture']['index']]['uri'])
+                    result = self.create_metallic_roughness_to_grayscale_images(metallic_roughness_texture_file)
                     metallic_factor = pbr_metallic_roughness['metallicFactor'] if 'metallicFactor' in pbr_metallic_roughness else 1.0
                     fallback_metallic = 1.0
                     scale_metallic = [metallic_factor] * 4
@@ -347,7 +352,7 @@ class GLTF2USD:
 
                     self._convert_texture_to_usd(
                         pbr_mat=pbr_mat, 
-                        gltf_texture=pbr_metallic_roughness['metallicRoughnessTexture'], 
+                        gltf_texture=result['metallic'], 
                         gltf_texture_name='metallicTexture', 
                         color_components=metallic_color_components, 
                         scale_factor=scale_metallic, 
@@ -360,7 +365,7 @@ class GLTF2USD:
 
                     self._convert_texture_to_usd(
                         pbr_mat=pbr_mat, 
-                        gltf_texture=pbr_metallic_roughness['metallicRoughnessTexture'], 
+                        gltf_texture=result['roughness'], 
                         gltf_texture_name='roughnessTexture', 
                         color_components=roughness_color_components, 
                         scale_factor=scale_roughness, 
@@ -370,9 +375,26 @@ class GLTF2USD:
                         primvar_st0_output=primvar_st0_output,
                         primvar_st1_output=primvar_st1_output
                     )
+    def create_metallic_roughness_to_grayscale_images(self, image):
+        image_base_name = ntpath.basename(image)
+        roughness_texture_name = 'Roughness_{}'.format(image_base_name)
+        metallic_texture_name = 'Metallic_{}'.format(image_base_name)
+
+        img = Image.open(image)
+        channels = img.split()
+        #get roughness
+        channels[1].save(roughness_texture_name)
+        #get metalness
+        channels[2].save(metallic_texture_name)
+
+        return {'metallic': metallic_texture_name, 'roughness': roughness_texture_name}
+
+
+        
+
 
     def _convert_texture_to_usd(self, primvar_st0_output, primvar_st1_output, pbr_mat, gltf_texture, gltf_texture_name, color_components, scale_factor, fallback_factor, material_path, fallback_type):
-        image_name = self.images[gltf_texture['index']]
+        image_name = gltf_texture if (isinstance(gltf_texture, basestring)) else self.images[gltf_texture['index']]
         texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild(gltf_texture_name))
         texture_shader.CreateIdAttr("UsdUVTexture")
         
@@ -401,17 +423,21 @@ class GLTF2USD:
     def _get_accessor_data(self, index):
         accessor = self.gltf_loader.json_data['accessors'][index]
 
-
-def convert_to_usd(gltf_file):
-    gltf_converter = GLTF2USD(gltf_file)
-    gltf_converter._convert_textures_to_usd()
+'''
+Converts a glTF file to USD
+'''
+def convert_to_usd(gltf_file, verbose=False):
+    gltf_converter = GLTF2USD(gltf_file, verbose)
+    #gltf_converter._convert_textures_to_usd()
+    gltf_converter._convert_images_to_usd()
     gltf_converter._convert_materials_to_preview_surface()
     gltf_converter.convert_nodes_to_xform()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert glTF to USD')
     parser.add_argument('--gltf', action='store', dest='gltf_file', help='glTF file (in .gltf format)', required=True)
+    parser.add_argument('--verbose', '-v', action='store_true', dest='verbose', help='Enable verbose mode')
     args = parser.parse_args()
 
     if args.gltf_file:
-        convert_to_usd(args.gltf_file)
+        convert_to_usd(args.gltf_file, args.verbose)
