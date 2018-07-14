@@ -5,7 +5,7 @@ import numpy
 import os
 import shutil
 
-from gltf2loader import GLTF2Loader, PrimitiveMode
+from gltf2loader import GLTF2Loader, PrimitiveMode, TextureWrap, MinFilter, MagFilter
 
 from PIL import Image
 
@@ -16,6 +16,12 @@ Class for converting glTF 2.0 models to Pixar's USD format.  Currently openly su
 with non-embedded data and exports to .usda .
 '''
 class GLTF2USD:
+    texture_sampler_wrap = {
+        TextureWrap.CLAMP_TO_EDGE : 'clamp',
+        TextureWrap.MIRRORED_REPEAT : 'mirror',
+        TextureWrap.REPEAT: 'repeat',
+    }
+
     def __init__(self, gltf_file, verbose):
         self.gltf_loader = GLTF2Loader(gltf_file)
         self.verbose = verbose
@@ -156,6 +162,22 @@ class GLTF2USD:
 
         if 'material' in primitive:
             material = self.gltf_loader.json_data['materials'][primitive['material']]
+
+    def _get_texture__wrap_modes(self, texture):
+        texture_data = {'wrapS': 'repeat', 'wrapT': 'repeat'}
+        if 'sampler' in texture:
+            sampler = self.gltf_loader.json_data['samplers'][texture['sampler']]
+            print(sampler)
+            
+            if 'wrapS' in sampler:
+                print(TextureWrap(sampler['wrapS']))
+                texture_data['wrapS'] = GLTF2USD.texture_sampler_wrap[TextureWrap(sampler['wrapS'])]
+
+            if 'wrapT' in sampler:
+                print(TextureWrap(sampler['wrapT']))
+                texture_data['wrapT'] = GLTF2USD.texture_sampler_wrap[TextureWrap(sampler['wrapT'])]
+
+        return texture_data
 
     def _convert_images_to_usd(self):
         if 'images' in self.gltf_loader.json_data:
@@ -331,7 +353,7 @@ class GLTF2USD:
 
                     self._convert_texture_to_usd(
                         pbr_mat=pbr_mat, 
-                        gltf_texture=result['metallic'], 
+                        gltf_texture=pbr_metallic_roughness['metallicRoughnessTexture'], 
                         gltf_texture_name='metallicTexture', 
                         color_components=metallic_color_components, 
                         scale_factor=scale_metallic, 
@@ -344,7 +366,7 @@ class GLTF2USD:
 
                     self._convert_texture_to_usd(
                         pbr_mat=pbr_mat, 
-                        gltf_texture=result['roughness'], 
+                        gltf_texture=pbr_metallic_roughness['metallicRoughnessTexture'], 
                         gltf_texture_name='roughnessTexture', 
                         color_components=roughness_color_components, 
                         scale_factor=scale_roughness, 
@@ -354,6 +376,33 @@ class GLTF2USD:
                         primvar_st0_output=primvar_st0_output,
                         primvar_st1_output=primvar_st1_output
                     )
+
+    def unpack_textures_to_grayscale_images(self, image, color_components):
+        image_base_name = ntpath.basename(image)
+        texture_name = image_base_name
+        for color_component, sdf_type in color_components.iteritems():
+            if color_component == 'rgb':
+                pass
+            else:
+                img = Image.open(image)
+                if img.mode == 'P':
+                    img = img.convert('RGB')
+                occlusion, roughness, metallic = img.split()
+                if color_component == 'r':
+                    texture_name = 'Occlusion_{}'.format(image_base_name)
+                    occlusion.save(texture_name)
+                elif color_component == 'g':
+                    texture_name = 'Roughness_{}'.format(image_base_name)
+                    roughness.save(texture_name)
+                elif color_component == 'b':
+                    texture_name = 'Metallic_{}'.format(image_base_name)
+                    metallic.save(texture_name)
+                else:
+                    raise Exception('Unsupported image type!')
+
+
+        return texture_name
+    
 
     def create_metallic_roughness_to_grayscale_images(self, image):
         image_base_name = ntpath.basename(image)
@@ -378,11 +427,20 @@ class GLTF2USD:
     '''
     def _convert_texture_to_usd(self, primvar_st0_output, primvar_st1_output, pbr_mat, gltf_texture, gltf_texture_name, color_components, scale_factor, fallback_factor, material_path, fallback_type):
         image_name = gltf_texture if (isinstance(gltf_texture, basestring)) else self.images[gltf_texture['index']]
+        texture_index = int(gltf_texture['index'])
+        print('test')
+        print(self.gltf_loader.json_data['textures'])
+        texture = self.gltf_loader.json_data['textures'][texture_index]
+        wrap_modes = self._get_texture__wrap_modes(texture)
         texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild(gltf_texture_name))
         texture_shader.CreateIdAttr("UsdUVTexture")
+
+        wrap_s = texture_shader.CreateInput('wrapS', Sdf.ValueTypeNames.Token).Set(wrap_modes['wrapS'])
+        wrap_t = texture_shader.CreateInput('wrapT', Sdf.ValueTypeNames.Token).Set(wrap_modes['wrapT'])
         
+        texture_name = self.unpack_textures_to_grayscale_images(image_name, color_components)
         file_asset = texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
-        file_asset.Set(image_name)
+        file_asset.Set(texture_name)
 
         for color_params, usd_color_params in color_components.iteritems():
             sdf_type = usd_color_params['sdf_type']

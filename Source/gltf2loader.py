@@ -20,6 +20,23 @@ class AccessorComponentType(Enum):
     UNSIGNED_INT = 5125
     FLOAT = 5126
 
+class TextureWrap(Enum):
+    CLAMP_TO_EDGE = 33071
+    MIRRORED_REPEAT = 33648
+    REPEAT = 10497
+
+class MagFilter(Enum):
+    NEAREST = 9728
+    LINEAR = 9729
+
+class MinFilter(Enum):
+    NEAREST = 9728
+    LINEAR = 9729
+    NEAREST_MIPMAP_NEAREST = 9984
+    LINEAR_MIPMAP_NEAREST = 9985
+    NEAREST_MIPMAP_LINEAR = 9986
+    LINEAR_MIPMAP_LINEAR = 9987
+
 class AccessorTypeCount(Enum):
     SCALAR = 1
     VEC2 = 2
