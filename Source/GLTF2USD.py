@@ -176,7 +176,6 @@ class GLTF2USD:
         texture_data = {'wrapS': 'repeat', 'wrapT': 'repeat'}
         if 'sampler' in texture:
             sampler = self.gltf_loader.json_data['samplers'][texture['sampler']]
-            print(sampler)
             
             if 'wrapS' in sampler:
                 print(TextureWrap(sampler['wrapS']))
@@ -250,28 +249,6 @@ class GLTF2USD:
                         metallic_factor = pbr_metallic_roughness['metallicFactor']
                         metallic = pbr_mat.CreateInput('metallic', Sdf.ValueTypeNames.Float)
                         metallic.Set(pbr_metallic_roughness['metallicFactor'])
-                if 'normalTexture' in material:
-                    normal_texture = material['normalTexture']
-                    image_name = self.images[normal_texture['index']]
-                    normal_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('normalTexture'))
-                    normal_texture_shader.CreateIdAttr("UsdUVTexture")
-                    
-                    file_asset = normal_texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
-                    file_asset.Set(image_name)
-                    normal_texture_shader_rgb_output = normal_texture_shader.CreateOutput('rgb', Sdf.ValueTypeNames.Color3f)
-                    pbr_mat_base_color_texture = pbr_mat.CreateInput('normal', Sdf.ValueTypeNames.Normal3f)
-                    pbr_mat_base_color_texture.ConnectToSource(normal_texture_shader_rgb_output)
-                    normal_texture_shader_input = normal_texture_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
-                    normal_texture_shader_fallback = normal_texture_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float4)
-                    normal_texture_shader_fallback.Set((0,0,0,1))
-                    if 'texCoord' in normal_texture and normal_texture['texCoord'] == 1:
-                        normal_texture_shader_input.ConnectToSource(primvar_st1_output)
-                    else:
-                        normal_texture_shader_input.ConnectToSource(primvar_st0_output)
-                    if 'scale' in normal_texture:
-                        scale_vector = normal_texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
-                        scale_factor = normal_texture['scale']
-                        scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
                 
                 if 'occlusionTexture' in material:
                     base_color_texture = material['occlusionTexture']
@@ -296,6 +273,29 @@ class GLTF2USD:
                         scale_factor = base_color_texture['strength']
                         scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
 
+                
+                if 'normalTexture' in material:
+                    scale_factor = material['normalTexture']['scale'] if 'scale' in material['normalTexture'] else [0,0,1]
+                    fallback_normal_color = tuple(scale_factor[0:3])
+                    scale_factor = (scale_factor[0], scale_factor[1], scale_factor[2], 1)
+                    normal_components = {
+                        'rgb': 
+                        {'sdf_type' : Sdf.ValueTypeNames.Normal3f, 'name': 'normal'}
+                    }
+
+                    self._convert_texture_to_usd(
+                        pbr_mat=pbr_mat, 
+                        gltf_texture=material['normalTexture'], 
+                        gltf_texture_name='normalTexture', 
+                        color_components=normal_components, 
+                        scale_factor=scale_factor, 
+                        fallback_factor=fallback_normal_color, 
+                        material_path=material_path,
+                        fallback_type=Sdf.ValueTypeNames.Normal3f,
+                        primvar_st0_output=primvar_st0_output,
+                        primvar_st1_output=primvar_st1_output
+                    )
+                
                 if 'emissiveTexture' in material:
                     emissive_factor = material['emissiveFactor'] if 'emissiveFactor' in material else [0,0,0]
                     fallback_emissive_color = tuple(emissive_factor[0:3])
