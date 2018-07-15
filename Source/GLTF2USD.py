@@ -65,17 +65,6 @@ class GLTF2USD:
     def _convert_node_to_xform(self, node, xform_name):
         xform_path = '{}'.format(xform_name)
         xformPrim = UsdGeom.Xform.Define(self.stage, xform_path)
-        if 'scale' in node:
-            scale = node['scale']
-            xformPrim.AddScaleOp().Set((scale[0], scale[1], scale[2]))
-
-        if 'rotation' in node:
-            rotation = node['rotation']
-            xformPrim.AddOrientOp().Set(Gf.Quatf(rotation[3], (rotation[0], rotation[1], rotation[2])))
-
-        if 'translation' in node:
-            translation = node['translation']
-            xformPrim.AddTranslateOp().Set((translation[0], translation[1], translation[2]))
         
         if 'matrix' in node:
             matrix = node['matrix']
@@ -87,6 +76,26 @@ class GLTF2USD:
                     matrix[12], matrix[13], matrix[14], matrix[15]
                     )
             )
+        else:
+            xform_matrix = Gf.Matrix4d()
+            if 'scale' in node:
+                scale = node['scale']
+                #xformPrim.AddScaleOp().Set((scale[0], scale[1], scale[2]))
+                xform_matrix.SetScale((scale[0], scale[1], scale[2]))
+
+            if 'rotation' in node:
+                rotation = node['rotation']
+                #xformPrim.AddOrientOp().Set(Gf.Quatf(rotation[3], rotation[0], rotation[1], rotation[2]))
+                xform_matrix.SetRotateOnly(Gf.Quatf(rotation[3], rotation[0], rotation[1], rotation[2]))
+
+            if 'translation' in node:
+                translation = node['translation']
+                #xformPrim.AddTranslateOp().Set((translation[0], translation[1], translation[2]))
+                xform_matrix.SetTranslateOnly((translation[0], translation[1], translation[2]))
+
+            xformPrim.AddTransformOp().Set(xform_matrix)
+        
+        
         if 'mesh' in node:
             self._convert_mesh_to_xform(self.gltf_loader.json_data['meshes'][node['mesh']], xform_path)
         if 'children' in node:
@@ -335,7 +344,7 @@ class GLTF2USD:
                     metallic_roughness_texture_file = os.path.join(self.gltf_loader.root_dir, self.gltf_loader.json_data['images'][pbr_metallic_roughness['metallicRoughnessTexture']['index']]['uri'])
                     result = self.create_metallic_roughness_to_grayscale_images(metallic_roughness_texture_file)
                     metallic_factor = pbr_metallic_roughness['metallicFactor'] if 'metallicFactor' in pbr_metallic_roughness else 1.0
-                    fallback_metallic = 1.0
+                    fallback_metallic = metallic_factor
                     scale_metallic = [metallic_factor] * 4
                     metallic_color_components = {
                         'b': 
@@ -428,8 +437,6 @@ class GLTF2USD:
     def _convert_texture_to_usd(self, primvar_st0_output, primvar_st1_output, pbr_mat, gltf_texture, gltf_texture_name, color_components, scale_factor, fallback_factor, material_path, fallback_type):
         image_name = gltf_texture if (isinstance(gltf_texture, basestring)) else self.images[gltf_texture['index']]
         texture_index = int(gltf_texture['index'])
-        print('test')
-        print(self.gltf_loader.json_data['textures'])
         texture = self.gltf_loader.json_data['textures'][texture_index]
         wrap_modes = self._get_texture__wrap_modes(texture)
         texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild(gltf_texture_name))
