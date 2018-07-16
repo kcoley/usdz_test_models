@@ -80,17 +80,14 @@ class GLTF2USD:
             xform_matrix = Gf.Matrix4d()
             if 'scale' in node:
                 scale = node['scale']
-                #xformPrim.AddScaleOp().Set((scale[0], scale[1], scale[2]))
                 xform_matrix.SetScale((scale[0], scale[1], scale[2]))
 
             if 'rotation' in node:
                 rotation = node['rotation']
-                #xformPrim.AddOrientOp().Set(Gf.Quatf(rotation[3], rotation[0], rotation[1], rotation[2]))
                 xform_matrix.SetRotateOnly(Gf.Quatf(rotation[3], rotation[0], rotation[1], rotation[2]))
 
             if 'translation' in node:
                 translation = node['translation']
-                #xformPrim.AddTranslateOp().Set((translation[0], translation[1], translation[2]))
                 xform_matrix.SetTranslateOnly((translation[0], translation[1], translation[2]))
 
             xformPrim.AddTransformOp().Set(xform_matrix)
@@ -134,11 +131,14 @@ class GLTF2USD:
                     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)                  
                     mesh.CreateNormalsAttr(data)
 
-                if attribute == 'COLOR':
+                if attribute == 'COLOR_0':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
                     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
-                    mesh.CreateColorsAttr(data)
+                    print(data)
+                    prim_var = UsdGeom.PrimvarsAPI(mesh)
+                    colors = prim_var.CreatePrimvar('displayColor', Sdf.ValueTypeNames.Color3f, 'vertex').Set(data)
+
                 if attribute == 'TEXCOORD_0':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
@@ -250,34 +250,58 @@ class GLTF2USD:
                         metallic = pbr_mat.CreateInput('metallic', Sdf.ValueTypeNames.Float)
                         metallic.Set(pbr_metallic_roughness['metallicFactor'])
                 
-                if 'occlusionTexture' in material:
-                    base_color_texture = material['occlusionTexture']
-                    image_name = self.images[base_color_texture['index']]
-                    base_color_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('occlusionTexture'))
-                    base_color_texture_shader.CreateIdAttr("UsdUVTexture")
+                # if 'occlusionTexture' in material:
+                #     base_color_texture = material['occlusionTexture']
+                #     image_name = self.images[base_color_texture['index']]
+                #     base_color_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('occlusionTexture'))
+                #     base_color_texture_shader.CreateIdAttr("UsdUVTexture")
                     
-                    file_asset = base_color_texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
-                    file_asset.Set(image_name)
-                    base_color_texture_shader_rgb_output = base_color_texture_shader.CreateOutput('r', Sdf.ValueTypeNames.Float)
-                    pbr_mat_base_color_texture = pbr_mat.CreateInput('occlusion', Sdf.ValueTypeNames.Float)
-                    pbr_mat_base_color_texture.ConnectToSource(base_color_texture_shader_rgb_output)
-                    base_color_texture_shader_input = base_color_texture_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
-                    base_color_texture_shader_fallback = base_color_texture_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float)
-                    base_color_texture_shader_fallback.Set(0)
-                    if 'texCoord' in base_color_texture and base_color_texture['texCoord'] == 1:
-                        base_color_texture_shader_input.ConnectToSource(primvar_st1_output)
-                    else:
-                        base_color_texture_shader_input.ConnectToSource(primvar_st0_output)
-                    if 'strength' in base_color_texture:
-                        scale_vector = base_color_texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
-                        scale_factor = base_color_texture['strength']
-                        scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
+                #     file_asset = base_color_texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
+                #     file_asset.Set(image_name)
+                #     base_color_texture_shader_rgb_output = base_color_texture_shader.CreateOutput('r', Sdf.ValueTypeNames.Float)
+                #     pbr_mat_base_color_texture = pbr_mat.CreateInput('occlusion', Sdf.ValueTypeNames.Float)
+                #     pbr_mat_base_color_texture.ConnectToSource(base_color_texture_shader_rgb_output)
+                #     base_color_texture_shader_input = base_color_texture_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
+                #     base_color_texture_shader_fallback = base_color_texture_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float)
+                #     base_color_texture_shader_fallback.Set(0)
+                #     if 'texCoord' in base_color_texture and base_color_texture['texCoord'] == 1:
+                #         base_color_texture_shader_input.ConnectToSource(primvar_st1_output)
+                #     else:
+                #         base_color_texture_shader_input.ConnectToSource(primvar_st0_output)
+                #     if 'strength' in base_color_texture:
+                #         scale_vector = base_color_texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
+                #         scale_factor = base_color_texture['strength']
+                #         scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
+
+                if 'occlusionTexture' in material:
+                    occlusion_texture = material['occlusionTexture']
+                    scale_factor = occlusion_texture['strength'] if 'strength' in occlusion_texture else 1
+                    fallback_occlusion_value = scale_factor
+                    scale_factor = (scale_factor, scale_factor, scale_factor, 1)
+                    occlusion_components = {
+                        'r': 
+                        {'sdf_type' : Sdf.ValueTypeNames.Float, 'name': 'occlusion'}
+                    }
+
+                    self._convert_texture_to_usd(
+                        pbr_mat=pbr_mat, 
+                        gltf_texture=occlusion_texture, 
+                        gltf_texture_name= 'occlusionTexture', 
+                        color_components= occlusion_components, 
+                        scale_factor=scale_factor, 
+                        fallback_factor=fallback_occlusion_value, 
+                        material_path=material_path,
+                        fallback_type=Sdf.ValueTypeNames.Float,
+                        primvar_st0_output=primvar_st0_output,
+                        primvar_st1_output=primvar_st1_output
+                    )
 
                 
                 if 'normalTexture' in material:
-                    scale_factor = material['normalTexture']['scale'] if 'scale' in material['normalTexture'] else [0,0,1]
-                    fallback_normal_color = tuple(scale_factor[0:3])
-                    scale_factor = (scale_factor[0], scale_factor[1], scale_factor[2], 1)
+                    normal_texture = material['normalTexture']
+                    scale_factor = normal_texture['scale'] if 'scale' in normal_texture else 1
+                    fallback_normal_color = (0,0,scale_factor)
+                    scale_factor = (scale_factor, scale_factor, scale_factor, 1)
                     normal_components = {
                         'rgb': 
                         {'sdf_type' : Sdf.ValueTypeNames.Normal3f, 'name': 'normal'}
@@ -387,6 +411,7 @@ class GLTF2USD:
                     )
 
     def unpack_textures_to_grayscale_images(self, image, color_components):
+        print(image)
         image_base_name = ntpath.basename(image)
         texture_name = image_base_name
         for color_component, sdf_type in color_components.iteritems():
@@ -396,23 +421,27 @@ class GLTF2USD:
                 img = Image.open(image)
                 if img.mode == 'P':
                     img = img.convert('RGB')
-                occlusion, roughness, metallic = img.split()
-                if color_component == 'r':
-                    texture_name = 'Occlusion_{}'.format(image_base_name)
-                    occlusion.save(texture_name)
-                elif color_component == 'g':
-                    texture_name = 'Roughness_{}'.format(image_base_name)
-                    roughness.save(texture_name)
-                elif color_component == 'b':
-                    texture_name = 'Metallic_{}'.format(image_base_name)
-                    metallic.save(texture_name)
+                print(len(img.split()))
+                if img.mode == 'RGB':
+                    occlusion, roughness, metallic = img.split()
+                    if color_component == 'r':
+                        texture_name = 'Occlusion_{}'.format(image_base_name)
+                        occlusion.save(texture_name)
+                    elif color_component == 'g':
+                        texture_name = 'Roughness_{}'.format(image_base_name)
+                        roughness.save(texture_name)
+                    elif color_component == 'b':
+                        texture_name = 'Metallic_{}'.format(image_base_name)
+                        metallic.save(texture_name)
+                elif img.mode == 'L':
+                    #already single channel
+                    pass
                 else:
-                    raise Exception('Unsupported image type!')
+                    raise Exception('Unsupported image type!: {}'.format(img.mode))
 
 
         return texture_name
     
-
     def create_metallic_roughness_to_grayscale_images(self, image):
         image_base_name = ntpath.basename(image)
         roughness_texture_name = 'Roughness_{}'.format(image_base_name)
@@ -423,13 +452,14 @@ class GLTF2USD:
         if img.mode == 'P':
             #convert paletted image to RGB
             img = img.convert('RGB')
-        channels = img.split()
-        #get roughness
-        channels[1].save(roughness_texture_name)
-        #get metalness
-        channels[2].save(metallic_texture_name)
+        if img.mode == 'RGB':
+            channels = img.split()
+            #get roughness
+            channels[1].save(roughness_texture_name)
+            #get metalness
+            channels[2].save(metallic_texture_name)
 
-        return {'metallic': metallic_texture_name, 'roughness': roughness_texture_name}
+            return {'metallic': metallic_texture_name, 'roughness': roughness_texture_name}
 
     '''
     Converts a glTF texture to USD
