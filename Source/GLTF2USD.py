@@ -250,29 +250,6 @@ class GLTF2USD:
                         metallic = pbr_mat.CreateInput('metallic', Sdf.ValueTypeNames.Float)
                         metallic.Set(pbr_metallic_roughness['metallicFactor'])
                 
-                # if 'occlusionTexture' in material:
-                #     base_color_texture = material['occlusionTexture']
-                #     image_name = self.images[base_color_texture['index']]
-                #     base_color_texture_shader = UsdShade.Shader.Define(self.stage, material_path.AppendChild('occlusionTexture'))
-                #     base_color_texture_shader.CreateIdAttr("UsdUVTexture")
-                    
-                #     file_asset = base_color_texture_shader.CreateInput('file', Sdf.ValueTypeNames.Asset)
-                #     file_asset.Set(image_name)
-                #     base_color_texture_shader_rgb_output = base_color_texture_shader.CreateOutput('r', Sdf.ValueTypeNames.Float)
-                #     pbr_mat_base_color_texture = pbr_mat.CreateInput('occlusion', Sdf.ValueTypeNames.Float)
-                #     pbr_mat_base_color_texture.ConnectToSource(base_color_texture_shader_rgb_output)
-                #     base_color_texture_shader_input = base_color_texture_shader.CreateInput('st', Sdf.ValueTypeNames.Float2)
-                #     base_color_texture_shader_fallback = base_color_texture_shader.CreateInput('fallback', Sdf.ValueTypeNames.Float)
-                #     base_color_texture_shader_fallback.Set(0)
-                #     if 'texCoord' in base_color_texture and base_color_texture['texCoord'] == 1:
-                #         base_color_texture_shader_input.ConnectToSource(primvar_st1_output)
-                #     else:
-                #         base_color_texture_shader_input.ConnectToSource(primvar_st0_output)
-                #     if 'strength' in base_color_texture:
-                #         scale_vector = base_color_texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
-                #         scale_factor = base_color_texture['strength']
-                #         scale_vector.Set((scale_factor, scale_factor, scale_factor, scale_factor))
-
                 if 'occlusionTexture' in material:
                     occlusion_texture = material['occlusionTexture']
                     scale_factor = occlusion_texture['strength'] if 'strength' in occlusion_texture else 1
