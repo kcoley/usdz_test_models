@@ -387,8 +387,8 @@ class GLTF2USD:
                     )
 
     def _convert_animations_to_usd(self):
-        self.stage.SetStartTimeCode(0)
-        self.stage.SetEndTimeCode(192)
+        total_max_time = 0
+        total_min_time = 0
 
         if 'animations' in self.gltf_loader.json_data:
             for animation in self.gltf_loader.json_data['animations']:
@@ -397,7 +397,16 @@ class GLTF2USD:
                     usd_node = self.gltf_usd_nodemap[target['node']]
                     sampler = animation['samplers'][channel['sampler']]
                     path = target['path']
-                    self._create_usd_animation(usd_node, sampler, path)
+                    (max_time, min_time) = self._create_usd_animation(usd_node, sampler, path)
+                    
+                    total_max_time = max(total_max_time, max_time)
+                    print('max time = {}'.format(max_time))
+                    total_min_time = min(total_min_time, min_time)
+
+        
+
+        self.stage.SetStartTimeCode(total_min_time)
+        self.stage.SetEndTimeCode(total_max_time)
 
         self.stage.Save()
                     
@@ -406,6 +415,8 @@ class GLTF2USD:
         fps = 24
         buffer = self.gltf_loader.json_data['buffers'][0]
         accessor = self.gltf_loader.json_data['accessors'][sampler['input']]
+        max_time = accessor['max'][0] * fps
+        min_time = accessor['min'][0] * fps
         input_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
         accessor = self.gltf_loader.json_data['accessors'][sampler['output']]
         output_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
@@ -413,6 +424,8 @@ class GLTF2USD:
 
         for i, keyframe in enumerate(input_keyframes):
             convert_func(transform, keyframe * fps, output_keyframes[i])
+
+        return (max_time, min_time)
             
 
 
