@@ -28,6 +28,7 @@ class GLTF2USD:
         file_base_name = ntpath.basename(gltf_file)
         usd_name = '{base_name}.usda'.format(base_name =os.path.splitext(file_base_name)[0])
         self.stage = Usd.Stage.CreateNew(usd_name)
+        self.gltf_usd_nodemap = {}
 
     '''
     Returns all the children nodes
@@ -54,17 +55,18 @@ class GLTF2USD:
             for i, node in enumerate(self.gltf_loader.json_data['nodes']):
                 if i not in child_nodes:
                     xform_name = '{parent_root}/node{index}'.format(parent_root=parent_root, index=i)
-                    self._convert_node_to_xform(node, xform_name)
+                    self._convert_node_to_xform(node, i, xform_name)
             self.stage.GetRootLayer().Save()
-        if self.verbose:
-            print('Conversion complete!')
+
+        print('Conversion complete!')
 
     '''
     Converts a glTF node to a USD transform.
     '''        
-    def _convert_node_to_xform(self, node, xform_name):
+    def _convert_node_to_xform(self, node, node_index, xform_name):
         xform_path = '{}'.format(xform_name)
         xformPrim = UsdGeom.Xform.Define(self.stage, xform_path)
+        self.gltf_usd_nodemap[node_index] = xformPrim
         
         if 'matrix' in node:
             matrix = node['matrix']
@@ -96,8 +98,8 @@ class GLTF2USD:
         if 'mesh' in node:
             self._convert_mesh_to_xform(self.gltf_loader.json_data['meshes'][node['mesh']], xform_path)
         if 'children' in node:
-            for child in node['children']:
-                self._convert_node_to_xform(self.gltf_loader.json_data['nodes'][child], xform_path + '/node{}'.format(child))
+            for child_index in node['children']:
+                self._convert_node_to_xform(self.gltf_loader.json_data['nodes'][child_index], child_index, xform_path + '/node{}'.format(child_index))
 
     '''
     Converts a glTF mesh to a USD Xform.  Each primitive becomes a submesh of the Xform.
@@ -135,7 +137,6 @@ class GLTF2USD:
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
                     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
-                    print(data)
                     prim_var = UsdGeom.PrimvarsAPI(mesh)
                     colors = prim_var.CreatePrimvar('displayColor', Sdf.ValueTypeNames.Color3f, 'vertex').Set(data)
 
@@ -178,11 +179,9 @@ class GLTF2USD:
             sampler = self.gltf_loader.json_data['samplers'][texture['sampler']]
             
             if 'wrapS' in sampler:
-                print(TextureWrap(sampler['wrapS']))
                 texture_data['wrapS'] = GLTF2USD.texture_sampler_wrap[TextureWrap(sampler['wrapS'])]
 
             if 'wrapT' in sampler:
-                print(TextureWrap(sampler['wrapT']))
                 texture_data['wrapT'] = GLTF2USD.texture_sampler_wrap[TextureWrap(sampler['wrapT'])]
 
         return texture_data
@@ -387,8 +386,60 @@ class GLTF2USD:
                         primvar_st1_output=primvar_st1_output
                     )
 
+    def _convert_animations_to_usd(self):
+        self.stage.SetStartTimeCode(0)
+        self.stage.SetEndTimeCode(192)
+
+        if 'animations' in self.gltf_loader.json_data:
+            for animation in self.gltf_loader.json_data['animations']:
+                for channel in animation['channels']:
+                    target = channel['target']
+                    usd_node = self.gltf_usd_nodemap[target['node']]
+                    sampler = animation['samplers'][channel['sampler']]
+                    path = target['path']
+                    self._create_usd_animation(usd_node, sampler, path)
+
+        self.stage.Save()
+                    
+
+    def _create_usd_animation(self, usd_node, sampler, path):
+        fps = 24
+        buffer = self.gltf_loader.json_data['buffers'][0]
+        accessor = self.gltf_loader.json_data['accessors'][sampler['input']]
+        input_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
+        accessor = self.gltf_loader.json_data['accessors'][sampler['output']]
+        output_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
+        (transform, convert_func) = self._get_keyframe_conversion_func(usd_node, path)
+
+        for i, keyframe in enumerate(input_keyframes):
+            convert_func(transform, keyframe * fps, output_keyframes[i])
+            
+
+
+
+    def _get_keyframe_conversion_func(self, usd_node, path):
+        def convert_translation(transform, time, value):
+            transform.Set(time=time, value=(value[0], value[1], value[2]))
+
+        def convert_scale(transform, time, value):
+            transform.Set(time=time, value=(value[0], value[1], value[2]))
+
+        def convert_rotation(transform, time, value):
+            matrix = Gf.Matrix4d().SetRotateOnly(Gf.Quatf(value[3], value[0], value[1], value[2]))
+            transform.Set(time=time, value=matrix)
+
+        if path == 'translation':
+            return (usd_node.AddTranslateOp(opSuffix='translate'), convert_translation)
+        elif path == 'rotation':
+            return (usd_node.AddTransformOp(opSuffix='rotate'), convert_rotation)
+        elif path == 'scale':
+            return (usd_node.AddScaleOp(opSuffix='scale'), convert_scale)
+        else:
+            raise Exception('Unsupported animation target path! {}'.format(path))
+
+
+
     def unpack_textures_to_grayscale_images(self, image, color_components):
-        print(image)
         image_base_name = ntpath.basename(image)
         texture_name = image_base_name
         for color_component, sdf_type in color_components.iteritems():
@@ -398,7 +449,6 @@ class GLTF2USD:
                 img = Image.open(image)
                 if img.mode == 'P':
                     img = img.convert('RGB')
-                print(len(img.split()))
                 if img.mode == 'RGB':
                     occlusion, roughness, metallic = img.split()
                     if color_component == 'r':
@@ -482,6 +532,7 @@ def convert_to_usd(gltf_file, verbose=False):
     gltf_converter._convert_images_to_usd()
     gltf_converter._convert_materials_to_preview_surface()
     gltf_converter.convert_nodes_to_xform()
+    gltf_converter._convert_animations_to_usd()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert glTF to USD')
