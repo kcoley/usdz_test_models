@@ -419,7 +419,6 @@ class GLTF2USD:
                         (max_time, min_time) = self._create_usd_animation(usd_node, sampler, path)
                         
                         total_max_time = max(total_max_time, max_time)
-                        print('max time = {}'.format(max_time))
                         total_min_time = min(total_min_time, min_time)
 
         
@@ -514,7 +513,7 @@ class GLTF2USD:
             xform_matrix = Gf.Matrix4d()
             if 'scale' in gltf_node:
                 scale = gltf_node['scale']
-                xform_matrix.SetScale(scale[0], scale[1], scale[2])
+                xform_matrix.SetScale(scale[0])
 
             if 'rotation' in gltf_node:
                 rotation = gltf_node['rotation']
