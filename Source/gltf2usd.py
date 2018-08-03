@@ -9,7 +9,7 @@ from gltf2loader import GLTF2Loader, PrimitiveMode, TextureWrap, MinFilter, MagF
 
 from PIL import Image
 
-from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf
+from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf, UsdSkel
 
 '''
 Class for converting glTF 2.0 models to Pixar's USD format.  Currently openly supports .gltf files
@@ -48,14 +48,22 @@ class GLTF2USD:
         parent_root = '/root'
         parent_transform = UsdGeom.Xform.Define(self.stage, parent_root)
         parent_transform.AddScaleOp().Set((100, 100, 100))
+
+        if 'skins' in self.gltf_loader.json_data:
+            skel_root = UsdSkel.Root.Define(self.stage, '/skeleton')
+
         
         child_nodes = self._get_child_nodes()
-        if 'nodes' in self.gltf_loader.json_data:
+        if 'scenes' in self.gltf_loader.json_data:
+            main_scene = self.gltf_loader.json_data['scene'] if 'scene' in self.gltf_loader.json_data else 0
             child_nodes = self._get_child_nodes()
-            for i, node in enumerate(self.gltf_loader.json_data['nodes']):
+            for i, node_index in enumerate(self.gltf_loader.json_data['scenes'][main_scene]['nodes']):
+                node = self.gltf_loader.json_data['nodes'][node_index]
                 if i not in child_nodes:
                     xform_name = '{parent_root}/node{index}'.format(parent_root=parent_root, index=i)
                     self._convert_node_to_xform(node, i, xform_name)
+
+            self._convert_animations_to_usd()
             self.stage.GetRootLayer().Save()
 
         print('Conversion complete!')
@@ -96,7 +104,12 @@ class GLTF2USD:
         
         
         if 'mesh' in node:
-            self._convert_mesh_to_xform(self.gltf_loader.json_data['meshes'][node['mesh']], xform_path)
+            self._convert_mesh_to_xform(self.gltf_loader.json_data['meshes'][node['mesh']], xform_path, node_index)
+
+        if 'skin' in node:
+            pass
+            #self._convert_skin_to_usd(xformPrim, node, node_index)
+        
         if 'children' in node:
             for child_index in node['children']:
                 self._convert_node_to_xform(self.gltf_loader.json_data['nodes'][child_index], child_index, xform_path + '/node{}'.format(child_index))
@@ -104,17 +117,17 @@ class GLTF2USD:
     '''
     Converts a glTF mesh to a USD Xform.  Each primitive becomes a submesh of the Xform.
     '''
-    def _convert_mesh_to_xform(self, mesh, parent_path):
+    def _convert_mesh_to_xform(self, mesh, parent_path, node_index):
         #for each mesh primitive, create a USD mesh
         if 'primitives' in mesh:
             for i, mesh_primitive in enumerate(mesh['primitives']):
                 mesh_primitive_name = 'mesh_primitive{}'.format(i)
-                self._convert_primitive_to_mesh(name=mesh_primitive_name, primitive=mesh_primitive, parent_path=parent_path)
+                self._convert_primitive_to_mesh(name=mesh_primitive_name, primitive=mesh_primitive, parent_path=parent_path, node_index=node_index)
 
     '''
     Converts a primitive to a USD mesh
     '''
-    def _convert_primitive_to_mesh(self, name, primitive, parent_path):
+    def _convert_primitive_to_mesh(self, name, primitive, parent_path, node_index):
         mesh = UsdGeom.Mesh.Define(self.stage, parent_path + '/{}'.format(name))
         buffer = self.gltf_loader.json_data['buffers'][0]
         if 'material' in primitive:
@@ -151,6 +164,9 @@ class GLTF2USD:
                     prim_var = UsdGeom.PrimvarsAPI(mesh)
                     uv = prim_var.CreatePrimvar('primvars:st0', Sdf.ValueTypeNames.TexCoord2fArray, 'vertex')
                     uv.Set(invert_uvs)
+                if attribute == 'JOINTS_0':
+                    gltf_node = self.gltf_loader.json_data['nodes'][node_index]
+                    self._convert_skin_to_usd(mesh, gltf_node, node_index)
 
 
         if 'indices' in primitive:
@@ -235,6 +251,8 @@ class GLTF2USD:
                 primvar_st1_varname = primvar_st1.CreateInput('varname', Sdf.ValueTypeNames.Token)
                 primvar_st1_varname.Set('st1')
                 primvar_st1_output = primvar_st1.CreateOutput('result', Sdf.ValueTypeNames.Float2)
+
+                pbr_metallic_roughness = None
                 
                 if 'pbrMetallicRoughness' in material:
                     pbr_metallic_roughness = material['pbrMetallicRoughness']
@@ -318,7 +336,7 @@ class GLTF2USD:
                         primvar_st1_output=primvar_st1_output
                     )
 
-                if 'baseColorTexture' in pbr_metallic_roughness:
+                if pbr_metallic_roughness and 'baseColorTexture' in pbr_metallic_roughness:
                     base_color_factor = pbr_metallic_roughness['baseColorFactor'] if 'baseColorFactor' in pbr_metallic_roughness else [1,1,1,1]
                     fallback_base_color = (base_color_factor[0], base_color_factor[1], base_color_factor[2])
                     scale_base_color_factor = base_color_factor
@@ -340,7 +358,7 @@ class GLTF2USD:
                         primvar_st1_output=primvar_st1_output
                     )
 
-                if 'metallicRoughnessTexture' in pbr_metallic_roughness:
+                if pbr_metallic_roughness and 'metallicRoughnessTexture' in pbr_metallic_roughness:
                     metallic_roughness_texture_file = os.path.join(self.gltf_loader.root_dir, self.gltf_loader.json_data['images'][pbr_metallic_roughness['metallicRoughnessTexture']['index']]['uri'])
                     result = self.create_metallic_roughness_to_grayscale_images(metallic_roughness_texture_file)
                     metallic_factor = pbr_metallic_roughness['metallicFactor'] if 'metallicFactor' in pbr_metallic_roughness else 1.0
@@ -394,22 +412,125 @@ class GLTF2USD:
             for animation in self.gltf_loader.json_data['animations']:
                 for channel in animation['channels']:
                     target = channel['target']
-                    usd_node = self.gltf_usd_nodemap[target['node']]
-                    sampler = animation['samplers'][channel['sampler']]
-                    path = target['path']
-                    (max_time, min_time) = self._create_usd_animation(usd_node, sampler, path)
-                    
-                    total_max_time = max(total_max_time, max_time)
-                    print('max time = {}'.format(max_time))
-                    total_min_time = min(total_min_time, min_time)
+                    if target['node'] in self.gltf_usd_nodemap:
+                        usd_node = self.gltf_usd_nodemap[target['node']]
+                        sampler = animation['samplers'][channel['sampler']]
+                        path = target['path']
+                        (max_time, min_time) = self._create_usd_animation(usd_node, sampler, path)
+                        
+                        total_max_time = max(total_max_time, max_time)
+                        print('max time = {}'.format(max_time))
+                        total_min_time = min(total_min_time, min_time)
 
         
 
         self.stage.SetStartTimeCode(total_min_time)
         self.stage.SetEndTimeCode(total_max_time)
 
-        self.stage.Save()
+    def _convert_skin_to_usd(self, usd_node, gltf_node, index):
+        gltf_skin = self.gltf_loader.json_data['skins'][gltf_node['skin']]
+        buffer = self.gltf_loader.json_data['buffers'][0]
+        bind_matrices = []
+        rest_matrices = []
+        #skel_root = UsdSkel.Root.Define(self.stage, '/skeleton')
+        skeleton = UsdSkel.Skeleton.Define(self.stage, '/skeleton/skel{}'.format(index))
+        skel_binding_api = UsdSkel.BindingAPI(usd_node)
+        skel_binding_api.CreateSkeletonRel().AddTarget('/skeleton/skel{}'.format(index))
+        
+        if 'inverseBindMatrices' in gltf_skin:  
+            inverse_bind_matrices_accessor = self.gltf_loader.json_data['accessors'][gltf_skin['inverseBindMatrices']]
+            inverse_bind_matrices = self.gltf_loader.get_data(buffer=buffer, accessor=inverse_bind_matrices_accessor)
+            
+            for matrix in inverse_bind_matrices:
+                bind_matrices.append(Gf.Matrix4d(
+                    matrix[0], matrix[1], matrix[2], matrix[3],
+                    matrix[4], matrix[5], matrix[6], matrix[7],
+                    matrix[8], matrix[9], matrix[10], matrix[11],
+                    matrix[12], matrix[13], matrix[14], matrix[15]
+                ).GetInverse())
+            skeleton.CreateBindTransformsAttr().Set(bind_matrices)
+
+        joint_path = None
+        joint_paths = []
+        
+        for i, joint_index in enumerate(gltf_skin['joints']):
+            joint_node = self.gltf_loader.json_data['nodes'][joint_index]
+            rest_matrices.append(self._compute_rest_matrix(joint_node))
+            name = joint_node['name'] if 'name' in joint_node else 'joint_{}'.format(i)
+
+            if not joint_path:
+                joint_path = name
+            else:
+                joint_path = '{0}/{1}'.format(joint_path, name)
+                print(joint_path)
+            joint_paths.append(Sdf.Path(joint_path))
+
+        print(joint_paths)
+
+        skeleton.CreateRestTransformsAttr().Set(rest_matrices)
+        skeleton.CreateJointsAttr().Set(joint_paths)
+        gltf_mesh = self.gltf_loader.json_data['meshes'][gltf_node['mesh']]
+        if 'primitives' in gltf_mesh:
+            if 'WEIGHTS_0' in gltf_mesh['primitives'][0]['attributes']:
+                buffer = self.gltf_loader.json_data['buffers'][0]
+                accessor = self.gltf_loader.json_data['accessors'][gltf_mesh['primitives'][0]['attributes']['WEIGHTS_0']]
+                total_vertex_weights = self.gltf_loader.get_data(buffer, accessor)
+                print(total_vertex_weights)
+
+                joint_weights = []
+                for vertex_weights in total_vertex_weights:
+                    for weight in vertex_weights:
+                        joint_weights.append(weight)
+
+                joint_weights_attr = skel_binding_api.CreateJointWeightsPrimvar(False, 4)
+                joint_weights_attr.Set(joint_weights)
+
+            if 'JOINTS_0' in gltf_mesh['primitives'][0]['attributes']:
+                buffer = self.gltf_loader.json_data['buffers'][0]
+                accessor = self.gltf_loader.json_data['accessors'][gltf_mesh['primitives'][0]['attributes']['JOINTS_0']]
+                total_vertex_joints = self.gltf_loader.get_data(buffer, accessor)
+                joint_indices = []
+                for vertex_joints in total_vertex_joints:
+                    for joint in vertex_joints:
+                        joint_indices.append(joint)
+
+                joint_indices_attr = skel_binding_api.CreateJointIndicesPrimvar(False, 4)
+                joint_indices_attr.Set(joint_indices)
+        
+
+        
+
+    def _compute_rest_matrix(self, gltf_node):
+        xform_matrix = None
+        if 'matrix' in gltf_node:
+            matrix = gltf_node['matrix']
+            xform_matrix = Gf.Matrix4d(matrix[0], matrix[1], matrix[2], matrix[3],
+                matrix[4], matrix[5], matrix[6], matrix[7],
+                matrix[8], matrix[9], matrix[10], matrix[11],
+                matrix[12], matrix[13], matrix[14], matrix[15]
+            )
+            
+        else:
+            xform_matrix = Gf.Matrix4d()
+            if 'scale' in gltf_node:
+                scale = gltf_node['scale']
+                xform_matrix.SetScale(scale[0], scale[1], scale[2])
+
+            if 'rotation' in gltf_node:
+                rotation = gltf_node['rotation']
+                xform_matrix.SetRotateOnly(Gf.Quatf(rotation[3], rotation[0], rotation[1], rotation[2]))
+
+            if 'translation' in gltf_node:
+                translation = gltf_node['translation']
+                xform_matrix.SetTranslateOnly(((translation[0], translation[1], translation[2])))
+
+        return xform_matrix
+
+
+
                     
+
+
 
     def _create_usd_animation(self, usd_node, sampler, path):
         fps = 24
@@ -545,7 +666,6 @@ def convert_to_usd(gltf_file, verbose=False):
     gltf_converter._convert_images_to_usd()
     gltf_converter._convert_materials_to_preview_surface()
     gltf_converter.convert_nodes_to_xform()
-    gltf_converter._convert_animations_to_usd()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert glTF to USD')
