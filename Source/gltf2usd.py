@@ -513,7 +513,7 @@ class GLTF2USD:
             xform_matrix = Gf.Matrix4d()
             if 'scale' in gltf_node:
                 scale = gltf_node['scale']
-                xform_matrix.SetScale(scale[0])
+                xform_matrix.SetScale((scale[0], scale[1], scale[2]))
 
             if 'rotation' in gltf_node:
                 rotation = gltf_node['rotation']
