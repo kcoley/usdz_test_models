@@ -29,6 +29,7 @@ class GLTF2USD:
         usd_name = '{base_name}.usda'.format(base_name =os.path.splitext(file_base_name)[0])
         self.stage = Usd.Stage.CreateNew(usd_name)
         self.gltf_usd_nodemap = {}
+        self.gltf_usdskel_nodemap = {}
 
     '''
     Returns all the children nodes
@@ -105,10 +106,6 @@ class GLTF2USD:
         
         if 'mesh' in node:
             self._convert_mesh_to_xform(self.gltf_loader.json_data['meshes'][node['mesh']], xform_path, node_index)
-
-        if 'skin' in node:
-            pass
-            #self._convert_skin_to_usd(xformPrim, node, node_index)
         
         if 'children' in node:
             for child_index in node['children']:
@@ -412,29 +409,43 @@ class GLTF2USD:
             for animation in self.gltf_loader.json_data['animations']:
                 for channel in animation['channels']:
                     target = channel['target']
-                    if target['node'] in self.gltf_usd_nodemap:
+
+                    if target['node'] in self.gltf_usdskel_nodemap:
+                        print('create skeleton animation')
+                        skeleton_joint = self.gltf_usdskel_nodemap[target['node']]
+                        skeleton = skeleton_joint['skeleton']
+                        sampler = animation['samplers'][channel['sampler']]
+                        path = target['path']
+                        (max_time, min_time) = self._create_usd_skeleton_animation(usd_skeleton=skeleton, sampler=sampler, gltf_target_path=path, joint_name=skeleton_joint['joint_name'])
+                        usdskel_animation = UsdSkel.Animation(skeleton)
+
+
+
+                    elif target['node'] in self.gltf_usd_nodemap:
                         usd_node = self.gltf_usd_nodemap[target['node']]
                         sampler = animation['samplers'][channel['sampler']]
                         path = target['path']
                         (max_time, min_time) = self._create_usd_animation(usd_node, sampler, path)
                         
-                        total_max_time = max(total_max_time, max_time)
-                        total_min_time = min(total_min_time, min_time)
+                    total_max_time = max(total_max_time, max_time)
+                    total_min_time = min(total_min_time, min_time)
+                    
+                    
 
         
 
         self.stage.SetStartTimeCode(total_min_time)
         self.stage.SetEndTimeCode(total_max_time)
 
-    def _convert_skin_to_usd(self, usd_node, gltf_node, index):
+    def _convert_skin_to_usd(self, usd_node, gltf_node, node_index):
         gltf_skin = self.gltf_loader.json_data['skins'][gltf_node['skin']]
         buffer = self.gltf_loader.json_data['buffers'][0]
         bind_matrices = []
         rest_matrices = []
         #skel_root = UsdSkel.Root.Define(self.stage, '/skeleton')
-        skeleton = UsdSkel.Skeleton.Define(self.stage, '/skeleton/skel{}'.format(index))
+        skeleton = UsdSkel.Skeleton.Define(self.stage, '/skeleton/skel{}'.format(node_index))
         skel_binding_api = UsdSkel.BindingAPI(usd_node)
-        skel_binding_api.CreateSkeletonRel().AddTarget('/skeleton/skel{}'.format(index))
+        skel_binding_api.CreateSkeletonRel().AddTarget('/skeleton/skel{}'.format(node_index))
         
         if 'inverseBindMatrices' in gltf_skin:  
             inverse_bind_matrices_accessor = self.gltf_loader.json_data['accessors'][gltf_skin['inverseBindMatrices']]
@@ -454,17 +465,17 @@ class GLTF2USD:
         
         for i, joint_index in enumerate(gltf_skin['joints']):
             joint_node = self.gltf_loader.json_data['nodes'][joint_index]
+            
             rest_matrices.append(self._compute_rest_matrix(joint_node))
             name = joint_node['name'] if 'name' in joint_node else 'joint_{}'.format(i)
-
+            
             if not joint_path:
                 joint_path = name
             else:
                 joint_path = '{0}/{1}'.format(joint_path, name)
-                print(joint_path)
             joint_paths.append(Sdf.Path(joint_path))
 
-        print(joint_paths)
+            self.gltf_usdskel_nodemap[joint_index] = {'skeleton':skeleton, 'joint_name': joint_path}
 
         skeleton.CreateRestTransformsAttr().Set(rest_matrices)
         skeleton.CreateJointsAttr().Set(joint_paths)
@@ -474,7 +485,6 @@ class GLTF2USD:
                 buffer = self.gltf_loader.json_data['buffers'][0]
                 accessor = self.gltf_loader.json_data['accessors'][gltf_mesh['primitives'][0]['attributes']['WEIGHTS_0']]
                 total_vertex_weights = self.gltf_loader.get_data(buffer, accessor)
-                print(total_vertex_weights)
 
                 joint_weights = []
                 for vertex_weights in total_vertex_weights:
@@ -546,6 +556,25 @@ class GLTF2USD:
             convert_func(transform, keyframe * fps, output_keyframes[i])
 
         return (max_time, min_time)
+
+    def _create_usd_skeleton_animation(self, usd_skeleton, sampler, gltf_target_path, joint_name):
+        fps = 24
+        buffer = self.gltf_loader.json_data['buffers'][0]
+        accessor = self.gltf_loader.json_data['accessors'][sampler['input']]
+        max_time = accessor['max'][0] * fps
+        min_time = accessor['min'][0] * fps
+        input_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
+        accessor = self.gltf_loader.json_data['accessors'][sampler['output']]
+        output_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
+        usd_animation = UsdSkel.Animation.Define(self.stage, '{0}/{1}'.format(usd_skeleton.GetPath(), 'anim'))
+        usd_animation.CreateJointsAttr().Set([joint_name])
+        UsdSkel.BindingAPI(usd_skeleton).CreateAnimationSourceRel().AddTarget(usd_animation.GetPath())
+        (transform, convert_func) = self._get_keyframe_usdskel_conversion_func(usd_skeleton, gltf_target_path, usd_animation)
+
+        for i, keyframe in enumerate(input_keyframes):
+            convert_func(transform, keyframe * fps, output_keyframes[i])
+
+        return (max_time, min_time)
             
 
 
@@ -567,6 +596,24 @@ class GLTF2USD:
             return (usd_node.AddTransformOp(opSuffix='rotate'), convert_rotation)
         elif path == 'scale':
             return (usd_node.AddScaleOp(opSuffix='scale'), convert_scale)
+        else:
+            raise Exception('Unsupported animation target path! {}'.format(path))
+
+    def _get_keyframe_usdskel_conversion_func(self, skeleton, path, usd_animation):
+        def convert_translation(transform, time, value):
+            transform.Set(time=time, value=[(value[0], value[1], value[2])])
+
+        def convert_scale(transform, time, value):
+            transform.Set(time=time, value=[(value[0], value[1], value[2])])
+
+        def convert_rotation(transform, time, value):
+            transform.Set(time=time, value=[Gf.Quatf(value[3], value[0], value[1], value[2])])
+        if path == 'translation':
+            return (usd_animation.CreateTranslationsAttr(), convert_translation)
+        elif path == 'rotation':
+            return (usd_animation.CreateRotationsAttr(), convert_rotation)
+        elif path == 'scale':
+            return (usd_animation.CreateScalesAttr(), convert_scale)
         else:
             raise Exception('Unsupported animation target path! {}'.format(path))
 
