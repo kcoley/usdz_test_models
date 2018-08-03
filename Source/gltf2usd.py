@@ -11,11 +11,12 @@ from PIL import Image
 
 from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf, UsdSkel
 
-'''
-Class for converting glTF 2.0 models to Pixar's USD format.  Currently openly supports .gltf files
-with non-embedded data and exports to .usda .
-'''
 class GLTF2USD:
+    """
+    Class for converting glTF 2.0 models to Pixar's USD format.  Currently openly supports .gltf files
+    with non-embedded data and exports to .usda .
+    """
+
     texture_sampler_wrap = {
         TextureWrap.CLAMP_TO_EDGE : 'clamp',
         TextureWrap.MIRRORED_REPEAT : 'mirror',
@@ -23,6 +24,13 @@ class GLTF2USD:
     }
 
     def __init__(self, gltf_file, verbose):
+        """Initializes the glTF to USD converter
+        
+        Arguments:
+            gltf_file {str} -- path to the glTF file
+            verbose {boolean} -- specifies if the output should be verbose from this tool
+        """
+
         self.gltf_loader = GLTF2Loader(gltf_file)
         self.verbose = verbose
         file_base_name = ntpath.basename(gltf_file)
@@ -31,10 +39,11 @@ class GLTF2USD:
         self.gltf_usd_nodemap = {}
         self.gltf_usdskel_nodemap = {}
 
-    '''
-    Returns all the children nodes
-    '''
+    
     def _get_child_nodes(self):
+        """
+        Returns all the child nodes in the glTF scene hierarchy as a set
+        """
         child_nodes = set()
         for node in self.gltf_loader.json_data['nodes']:
             if 'children' in node:
@@ -42,10 +51,12 @@ class GLTF2USD:
 
         return child_nodes
     
-    '''
-    Converts the glTF nodes to USD Xforms.  The models get a parent Xform that scales the geometry by 100 to convert from meters (glTF) to centimeters (USD).
-    '''
+    
     def convert_nodes_to_xform(self):
+        """
+        Converts the glTF nodes to USD Xforms.  The models get a parent Xform that scales the geometry by 100 
+        to convert from meters (glTF) to centimeters (USD).
+        """
         parent_root = '/root'
         parent_transform = UsdGeom.Xform.Define(self.stage, parent_root)
         parent_transform.AddScaleOp().Set((100, 100, 100))
@@ -68,11 +79,15 @@ class GLTF2USD:
             self.stage.GetRootLayer().Save()
 
         print('Conversion complete!')
-
-    '''
-    Converts a glTF node to a USD transform.
-    '''        
+   
     def _convert_node_to_xform(self, node, node_index, xform_name):
+        """Converts a glTF node to a USD transform node.
+        
+        Arguments:
+            node {dict} -- glTF node
+            node_index {int} -- glTF node index
+            xform_name {str} -- USD xform name
+        """
         xform_path = '{}'.format(xform_name)
         xformPrim = UsdGeom.Xform.Define(self.stage, xform_path)
         self.gltf_usd_nodemap[node_index] = xformPrim
@@ -111,20 +126,34 @@ class GLTF2USD:
             for child_index in node['children']:
                 self._convert_node_to_xform(self.gltf_loader.json_data['nodes'][child_index], child_index, xform_path + '/node{}'.format(child_index))
 
-    '''
-    Converts a glTF mesh to a USD Xform.  Each primitive becomes a submesh of the Xform.
-    '''
+
     def _convert_mesh_to_xform(self, mesh, parent_path, node_index):
+        """
+        Converts a glTF mesh to a USD Xform.  
+        Each primitive becomes a submesh of the Xform.
+        
+        Arguments:
+            mesh {dict} -- glTF mesh
+            parent_path {str} -- xform path
+            node_index {int} -- glTF node index
+        """
         #for each mesh primitive, create a USD mesh
         if 'primitives' in mesh:
             for i, mesh_primitive in enumerate(mesh['primitives']):
                 mesh_primitive_name = 'mesh_primitive{}'.format(i)
                 self._convert_primitive_to_mesh(name=mesh_primitive_name, primitive=mesh_primitive, parent_path=parent_path, node_index=node_index)
 
-    '''
-    Converts a primitive to a USD mesh
-    '''
+
     def _convert_primitive_to_mesh(self, name, primitive, parent_path, node_index):
+        """
+        Converts a glTF mesh primitive to a USD mesh
+        
+        Arguments:
+            name {str} -- name of the primitive
+            primitive {dict} -- glTF primitive
+            parent_path {str} -- USD xform parent path
+            node_index {int} -- glTF node index
+        """
         mesh = UsdGeom.Mesh.Define(self.stage, parent_path + '/{}'.format(name))
         buffer = self.gltf_loader.json_data['buffers'][0]
         if 'material' in primitive:
@@ -187,6 +216,10 @@ class GLTF2USD:
             material = self.gltf_loader.json_data['materials'][primitive['material']]
 
     def _get_texture__wrap_modes(self, texture):
+        """
+        Get the USD texture wrap modes from a glTF texture
+        """
+
         texture_data = {'wrapS': 'repeat', 'wrapT': 'repeat'}
         if 'sampler' in texture:
             sampler = self.gltf_loader.json_data['samplers'][texture['sampler']]
@@ -200,6 +233,10 @@ class GLTF2USD:
         return texture_data
 
     def _convert_images_to_usd(self):
+        """
+        Converts the glTF images to USD images
+        """
+
         if 'images' in self.gltf_loader.json_data:
             self.images = []
             for i, image in enumerate(self.gltf_loader.json_data['images']):
@@ -209,6 +246,10 @@ class GLTF2USD:
                 self.images.append(ntpath.basename(image_name))
 
     def _convert_materials_to_preview_surface(self):
+        """
+        Converts the glTF materials to preview surfaces
+        """
+
         if 'materials' in self.gltf_loader.json_data:
             self.usd_materials = []
             material_path_root = '/Materials'
@@ -402,6 +443,10 @@ class GLTF2USD:
                     )
 
     def _convert_animations_to_usd(self):
+        """
+        Convert glTF animations to USD animations
+        """
+
         total_max_time = 0
         total_min_time = 0
 
@@ -411,7 +456,6 @@ class GLTF2USD:
                     target = channel['target']
 
                     if target['node'] in self.gltf_usdskel_nodemap:
-                        print('create skeleton animation')
                         skeleton_joint = self.gltf_usdskel_nodemap[target['node']]
                         skeleton = skeleton_joint['skeleton']
                         sampler = animation['samplers'][channel['sampler']]
@@ -438,11 +482,14 @@ class GLTF2USD:
         self.stage.SetEndTimeCode(total_max_time)
 
     def _convert_skin_to_usd(self, usd_node, gltf_node, node_index):
+        """
+        Converts a glTF skin to USD
+        """
+
         gltf_skin = self.gltf_loader.json_data['skins'][gltf_node['skin']]
         buffer = self.gltf_loader.json_data['buffers'][0]
         bind_matrices = []
         rest_matrices = []
-        #skel_root = UsdSkel.Root.Define(self.stage, '/skeleton')
         skeleton = UsdSkel.Skeleton.Define(self.stage, '/skeleton/skel{}'.format(node_index))
         skel_binding_api = UsdSkel.BindingAPI(usd_node)
         skel_binding_api.CreateSkeletonRel().AddTarget('/skeleton/skel{}'.format(node_index))
@@ -507,9 +554,15 @@ class GLTF2USD:
                 joint_indices_attr.Set(joint_indices)
         
 
-        
-
     def _compute_rest_matrix(self, gltf_node):
+        """
+        Compute the rest matrix from a glTF node.  
+        The translation, rotation and scale are combined into a transformation matrix
+
+        Returns:
+            Matrix4d -- USD matrix
+        """
+
         xform_matrix = None
         if 'matrix' in gltf_node:
             matrix = gltf_node['matrix']
@@ -536,12 +589,18 @@ class GLTF2USD:
         return xform_matrix
 
 
-
-                    
-
-
-
     def _create_usd_animation(self, usd_node, sampler, path):
+        """Converts a glTF animation to a USD animation
+        
+        Arguments:
+            usd_node {[type]} -- [description]
+            sampler {[type]} -- [description]
+            path {Sdf.Path} -- Path to the USD node
+        
+        Returns:
+            [type] -- [description]
+        """
+
         fps = 24
         buffer = self.gltf_loader.json_data['buffers'][0]
         accessor = self.gltf_loader.json_data['accessors'][sampler['input']]
