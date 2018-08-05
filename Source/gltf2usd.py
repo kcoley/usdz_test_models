@@ -60,10 +60,6 @@ class GLTF2USD:
         parent_root = '/root'
         parent_transform = UsdGeom.Xform.Define(self.stage, parent_root)
         parent_transform.AddScaleOp().Set((100, 100, 100))
-
-        if 'skins' in self.gltf_loader.json_data:
-            skel_root = UsdSkel.Root.Define(self.stage, '/skeleton')
-
         
         child_nodes = self._get_child_nodes()
         if 'scenes' in self.gltf_loader.json_data:
@@ -120,7 +116,12 @@ class GLTF2USD:
         
         
         if 'mesh' in node:
-            self._convert_mesh_to_xform(self.gltf_loader.json_data['meshes'][node['mesh']], xform_path, node_index)
+            mesh_path = xform_path
+            if 'skin' in node:
+                skel_root = UsdSkel.Root.Define(self.stage, '{0}/{1}'.format(xform_path, 'skeleton_root'))
+                mesh_path = skel_root.GetPath()
+                
+            self._convert_mesh_to_xform(self.gltf_loader.json_data['meshes'][node['mesh']], mesh_path, node_index)
         
         if 'children' in node:
             for child_index in node['children']:
@@ -154,7 +155,7 @@ class GLTF2USD:
             parent_path {str} -- USD xform parent path
             node_index {int} -- glTF node index
         """
-        mesh = UsdGeom.Mesh.Define(self.stage, parent_path + '/{}'.format(name))
+        mesh = UsdGeom.Mesh.Define(self.stage, '{0}/{1}'.format(parent_path, name))
         buffer = self.gltf_loader.json_data['buffers'][0]
         if 'material' in primitive:
             usd_material = self.usd_materials[primitive['material']]
@@ -192,7 +193,7 @@ class GLTF2USD:
                     uv.Set(invert_uvs)
                 if attribute == 'JOINTS_0':
                     gltf_node = self.gltf_loader.json_data['nodes'][node_index]
-                    self._convert_skin_to_usd(mesh, gltf_node, node_index)
+                    self._convert_skin_to_usd(mesh, gltf_node, node_index, parent_path)
 
 
         if 'indices' in primitive:
@@ -487,7 +488,7 @@ class GLTF2USD:
         self.stage.SetStartTimeCode(total_min_time)
         self.stage.SetEndTimeCode(total_max_time)
 
-    def _convert_skin_to_usd(self, usd_node, gltf_node, node_index):
+    def _convert_skin_to_usd(self, usd_node, gltf_node, node_index, parent_path):
         """
         Converts a glTF skin to USD
         """
@@ -496,9 +497,9 @@ class GLTF2USD:
         buffer = self.gltf_loader.json_data['buffers'][0]
         bind_matrices = []
         rest_matrices = []
-        skeleton = UsdSkel.Skeleton.Define(self.stage, '/skeleton/skel{}'.format(node_index))
+        skeleton = UsdSkel.Skeleton.Define(self.stage, '{0}/skel{1}'.format(parent_path, node_index))
         skel_binding_api = UsdSkel.BindingAPI(usd_node)
-        skel_binding_api.CreateSkeletonRel().AddTarget('/skeleton/skel{}'.format(node_index))
+        skel_binding_api.CreateSkeletonRel().AddTarget(skeleton.GetPath())
         
         if 'inverseBindMatrices' in gltf_skin:  
             inverse_bind_matrices_accessor = self.gltf_loader.json_data['accessors'][gltf_skin['inverseBindMatrices']]
@@ -610,15 +611,15 @@ class GLTF2USD:
         fps = 24
         buffer = self.gltf_loader.json_data['buffers'][0]
         accessor = self.gltf_loader.json_data['accessors'][sampler['input']]
-        max_time = accessor['max'][0] * fps
-        min_time = accessor['min'][0] * fps
+        max_time = int(round(accessor['max'][0] * fps))
+        min_time = int(round(accessor['min'][0] * fps))
         input_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
         accessor = self.gltf_loader.json_data['accessors'][sampler['output']]
         output_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
         (transform, convert_func) = self._get_keyframe_conversion_func(usd_node, path)
 
         for i, keyframe in enumerate(input_keyframes):
-            convert_func(transform, keyframe * fps, output_keyframes[i])
+            convert_func(transform, int(round(keyframe * fps)), output_keyframes[i])
 
         return (max_time, min_time)
 
@@ -626,8 +627,8 @@ class GLTF2USD:
         fps = 24
         buffer = self.gltf_loader.json_data['buffers'][0]
         accessor = self.gltf_loader.json_data['accessors'][sampler['input']]
-        max_time = accessor['max'][0] * fps
-        min_time = accessor['min'][0] * fps
+        max_time = int(round(accessor['max'][0] * fps))
+        min_time = int(round(accessor['min'][0] * fps))
         input_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
         accessor = self.gltf_loader.json_data['accessors'][sampler['output']]
         output_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
@@ -637,7 +638,7 @@ class GLTF2USD:
         (transform, convert_func) = self._get_keyframe_usdskel_conversion_func(usd_skeleton, gltf_target_path, usd_animation)
 
         for i, keyframe in enumerate(input_keyframes):
-            convert_func(transform, keyframe * fps, output_keyframes[i])
+            convert_func(transform, int(round(keyframe * fps)), output_keyframes[i])
 
         return (max_time, min_time)
             
