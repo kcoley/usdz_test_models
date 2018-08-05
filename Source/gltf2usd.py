@@ -34,6 +34,9 @@ class GLTF2USD:
         """
         self.logger = logging.getLogger('gltf2usd')
         self.logger.setLevel(logging.DEBUG)
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.DEBUG)
+        self.logger.addHandler(console_handler)
 
         if not usd_file.endswith('.usda'):
             self.logger.error('This tool can only export to .usda file format')
@@ -45,6 +48,8 @@ class GLTF2USD:
             self.stage = Usd.Stage.CreateNew(usd_file)
             self.gltf_usd_nodemap = {}
             self.gltf_usdskel_nodemap = {}
+
+            self.convert()
 
     
     def _get_child_nodes(self):
@@ -780,16 +785,20 @@ class GLTF2USD:
         scale_vector = texture_shader.CreateInput('scale', Sdf.ValueTypeNames.Float4)
         scale_vector.Set((scale_factor[0], scale_factor[1], scale_factor[2], scale_factor[3]))
 
+    def convert(self):
+        if hasattr(self, 'gltf_loader'):
+            self._convert_images_to_usd()
+            self._convert_materials_to_preview_surface()
+            self.convert_nodes_to_xform()
+
+
 
 '''
 Converts a glTF file to USD
 '''
 def convert_to_usd(gltf_file, usd_path, verbose=False):
     gltf_converter = GLTF2USD(gltf_file, usd_path, verbose)
-    gltf_converter._convert_images_to_usd()
-    gltf_converter._convert_materials_to_preview_surface()
-    gltf_converter.convert_nodes_to_xform()
-
+    
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert glTF to USD')
     parser.add_argument('--gltf', '-g', action='store', dest='gltf_file', help='glTF file (in .gltf format)', required=True)
