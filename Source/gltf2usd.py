@@ -211,7 +211,7 @@ class GLTF2USD:
                     uv.Set(invert_uvs)
                 if attribute == 'JOINTS_0':
                     gltf_node = self.gltf_loader.json_data['nodes'][node_index]
-                    self._convert_skin_to_usd(mesh, gltf_node, node_index, parent_path)
+                    self._convert_skin_to_usd(mesh, gltf_node, node_index, parent_path, mesh)
 
 
         if 'indices' in primitive:
@@ -506,7 +506,7 @@ class GLTF2USD:
         self.stage.SetStartTimeCode(total_min_time)
         self.stage.SetEndTimeCode(total_max_time)
 
-    def _convert_skin_to_usd(self, usd_node, gltf_node, node_index, parent_path):
+    def _convert_skin_to_usd(self, usd_node, gltf_node, node_index, parent_path, usd_mesh):
         """
         Converts a glTF skin to USD
         """
@@ -517,8 +517,9 @@ class GLTF2USD:
         rest_matrices = []
         skeleton = UsdSkel.Skeleton.Define(self.stage, '{0}/skel{1}'.format(parent_path, node_index))
         skeleton_root = self.stage.GetPrimAtPath(parent_path)
-        skel_binding_api = UsdSkel.BindingAPI(skeleton_root)
-        skel_binding_api.CreateSkeletonRel().AddTarget(skeleton.GetPath())
+        skel_binding_api = UsdSkel.BindingAPI(usd_mesh)
+        skel_binding_api_skel_root = UsdSkel.BindingAPI(skeleton_root)
+        skel_binding_api_skel_root.CreateSkeletonRel().AddTarget(skeleton.GetPath())
         
         if 'inverseBindMatrices' in gltf_skin:  
             inverse_bind_matrices_accessor = self.gltf_loader.json_data['accessors'][gltf_skin['inverseBindMatrices']]
