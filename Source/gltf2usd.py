@@ -118,7 +118,7 @@ class GLTF2USD:
         if 'mesh' in node:
             mesh_path = xform_path
             if 'skin' in node:
-                skel_root = UsdSkel.Root.Define(self.stage, '{0}/{1}'.format(xform_path, 'skeleton_root'))
+                skel_root = UsdSkel.Root.Define(self.stage, '{0}/{1}'.format(xform_path, 'skeleton_root_{}'.format(node_index)))
                 mesh_path = skel_root.GetPath()
                 
             self._convert_mesh_to_xform(self.gltf_loader.json_data['meshes'][node['mesh']], mesh_path, node_index)
@@ -498,7 +498,8 @@ class GLTF2USD:
         bind_matrices = []
         rest_matrices = []
         skeleton = UsdSkel.Skeleton.Define(self.stage, '{0}/skel{1}'.format(parent_path, node_index))
-        skel_binding_api = UsdSkel.BindingAPI(usd_node)
+        skeleton_root = self.stage.GetPrimAtPath(parent_path)
+        skel_binding_api = UsdSkel.BindingAPI(skeleton_root)
         skel_binding_api.CreateSkeletonRel().AddTarget(skeleton.GetPath())
         
         if 'inverseBindMatrices' in gltf_skin:  
@@ -634,7 +635,10 @@ class GLTF2USD:
         output_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
         usd_animation = UsdSkel.Animation.Define(self.stage, '{0}/{1}'.format(usd_skeleton.GetPath(), 'anim'))
         usd_animation.CreateJointsAttr().Set([joint_name])
-        UsdSkel.BindingAPI(usd_skeleton).CreateAnimationSourceRel().AddTarget(usd_animation.GetPath())
+        usd_skel_root_path = usd_skeleton.GetPath().GetParentPath()
+        usd_skel_root = self.stage.GetPrimAtPath(usd_skel_root_path)
+
+        UsdSkel.BindingAPI(usd_skel_root).CreateAnimationSourceRel().AddTarget(usd_animation.GetPath())
         (transform, convert_func) = self._get_keyframe_usdskel_conversion_func(usd_skeleton, gltf_target_path, usd_animation)
 
         for i, keyframe in enumerate(input_keyframes):
