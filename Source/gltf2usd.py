@@ -722,16 +722,13 @@ class GLTF2USD:
                     occlusion, roughness, metallic = img.split()
                     if color_component == 'r':
                         texture_name = 'Occlusion_{}'.format(image_base_name)
-                        texture_name = os.path.join(self.output_dir, texture_name)
-                        occlusion.save(texture_name)
+                        occlusion.save(os.path.join(self.output_dir, texture_name))
                     elif color_component == 'g':
                         texture_name = 'Roughness_{}'.format(image_base_name)
-                        texture_name = os.path.join(self.output_dir, texture_name)
-                        roughness.save(texture_name)
+                        roughness.save(os.path.join(self.output_dir, texture_name))
                     elif color_component == 'b':
                         texture_name = 'Metallic_{}'.format(image_base_name)
-                        texture_name = os.path.join(self.output_dir, texture_name)
-                        metallic.save(texture_name)
+                        metallic.save(os.path.join(self.output_dir, texture_name))
                 elif img.mode == 'L':
                     #already single channel
                     pass
