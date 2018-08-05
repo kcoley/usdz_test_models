@@ -169,6 +169,7 @@ class GLTF2USD:
             parent_path {str} -- USD xform parent path
             node_index {int} -- glTF node index
         """
+        usd_node = self.stage.GetPrimAtPath(parent_path)
         mesh = UsdGeom.Mesh.Define(self.stage, '{0}/{1}'.format(parent_path, name))
         buffer = self.gltf_loader.json_data['buffers'][0]
         if 'material' in primitive:
@@ -179,6 +180,9 @@ class GLTF2USD:
                 if attribute == 'POSITION':
                     accessor_index = primitive['attributes'][attribute]
                     accessor = self.gltf_loader.json_data['accessors'][accessor_index]
+                    override_prim = self.stage.OverridePrim(mesh.GetPath())
+                    
+                    override_prim.CreateAttribute('extent', Sdf.ValueTypeNames.Float3Array).Set([accessor['min'], accessor['max']])
                     data = self.gltf_loader.get_data(buffer=buffer, accessor=accessor)
                     mesh.CreatePointsAttr(data)
                 if attribute == 'NORMAL':
