@@ -44,6 +44,8 @@ class GLTF2USD:
             self.gltf_loader = GLTF2Loader(gltf_file)
             self.verbose = verbose
             file_base_name = ntpath.basename(gltf_file)
+
+            self.output_dir = os.path.dirname(usd_file)
             
             self.stage = Usd.Stage.CreateNew(usd_file)
             self.gltf_usd_nodemap = {}
@@ -78,8 +80,7 @@ class GLTF2USD:
             child_nodes = self._get_child_nodes()
             for i, node_index in enumerate(self.gltf_loader.json_data['scenes'][main_scene]['nodes']):
                 node = self.gltf_loader.json_data['nodes'][node_index]
-                print(child_nodes)
-                print(node_index)
+
                 if node_index not in child_nodes:
                     xform_name = '{parent_root}/node{index}'.format(parent_root=parent_transform.GetPath(), index=i)
                     self._convert_node_to_xform(node, node_index, xform_name)
@@ -261,7 +262,7 @@ class GLTF2USD:
             self.images = []
             for i, image in enumerate(self.gltf_loader.json_data['images']):
                 image_path = os.path.join(self.gltf_loader.root_dir, image['uri'])
-                image_name = os.path.join(os.getcwd(), ntpath.basename(image_path))
+                image_name = os.path.join(self.output_dir, ntpath.basename(image_path))
                 shutil.copyfile(image_path, image_name)
                 self.images.append(ntpath.basename(image_name))
 
@@ -716,12 +717,15 @@ class GLTF2USD:
                     occlusion, roughness, metallic = img.split()
                     if color_component == 'r':
                         texture_name = 'Occlusion_{}'.format(image_base_name)
+                        texture_name = os.path.join(self.output_dir, texture_name)
                         occlusion.save(texture_name)
                     elif color_component == 'g':
                         texture_name = 'Roughness_{}'.format(image_base_name)
+                        texture_name = os.path.join(self.output_dir, texture_name)
                         roughness.save(texture_name)
                     elif color_component == 'b':
                         texture_name = 'Metallic_{}'.format(image_base_name)
+                        texture_name = os.path.join(self.output_dir, texture_name)
                         metallic.save(texture_name)
                 elif img.mode == 'L':
                     #already single channel
@@ -734,8 +738,8 @@ class GLTF2USD:
     
     def create_metallic_roughness_to_grayscale_images(self, image):
         image_base_name = ntpath.basename(image)
-        roughness_texture_name = 'Roughness_{}'.format(image_base_name)
-        metallic_texture_name = 'Metallic_{}'.format(image_base_name)
+        roughness_texture_name = os.path.join(self.output_dir, 'Roughness_{}'.format(image_base_name))
+        metallic_texture_name = os.path.join(self.output_dir, 'Metallic_{}'.format(image_base_name))
 
         img = Image.open(image)
 
@@ -756,6 +760,7 @@ class GLTF2USD:
     '''
     def _convert_texture_to_usd(self, primvar_st0_output, primvar_st1_output, pbr_mat, gltf_texture, gltf_texture_name, color_components, scale_factor, fallback_factor, material_path, fallback_type):
         image_name = gltf_texture if (isinstance(gltf_texture, basestring)) else self.images[gltf_texture['index']]
+        image_name = os.path.join(self.output_dir, image_name)
         texture_index = int(gltf_texture['index'])
         texture = self.gltf_loader.json_data['textures'][texture_index]
         wrap_modes = self._get_texture__wrap_modes(texture)
