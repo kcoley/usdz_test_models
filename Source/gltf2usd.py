@@ -216,8 +216,14 @@ class GLTF2USD:
             material = self.gltf_loader.json_data['materials'][primitive['material']]
 
     def _get_texture__wrap_modes(self, texture):
-        """
-        Get the USD texture wrap modes from a glTF texture
+        """Get the USD texture wrap modes from a glTF texture
+        
+        Arguments:
+            texture {dict} -- glTF texture
+        
+        Returns:
+            dict -- dictionary mapping wrapS and wrapT to 
+            a USD texture sampler mode
         """
 
         texture_data = {'wrapS': 'repeat', 'wrapT': 'repeat'}
