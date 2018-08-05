@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import ntpath
 import numpy
 import os
@@ -23,21 +24,27 @@ class GLTF2USD:
         TextureWrap.REPEAT: 'repeat',
     }
 
-    def __init__(self, gltf_file, verbose):
+    def __init__(self, gltf_file, usd_file, verbose):
         """Initializes the glTF to USD converter
         
         Arguments:
             gltf_file {str} -- path to the glTF file
+            usd_file {str} -- path to store the generated usda file
             verbose {boolean} -- specifies if the output should be verbose from this tool
         """
+        self.logger = logging.getLogger('gltf2usd')
+        self.logger.setLevel(logging.DEBUG)
 
-        self.gltf_loader = GLTF2Loader(gltf_file)
-        self.verbose = verbose
-        file_base_name = ntpath.basename(gltf_file)
-        usd_name = '{base_name}.usda'.format(base_name =os.path.splitext(file_base_name)[0])
-        self.stage = Usd.Stage.CreateNew(usd_name)
-        self.gltf_usd_nodemap = {}
-        self.gltf_usdskel_nodemap = {}
+        if not usd_file.endswith('.usda'):
+            self.logger.error('This tool can only export to .usda file format')
+        else:
+            self.gltf_loader = GLTF2Loader(gltf_file)
+            self.verbose = verbose
+            file_base_name = ntpath.basename(gltf_file)
+            
+            self.stage = Usd.Stage.CreateNew(usd_file)
+            self.gltf_usd_nodemap = {}
+            self.gltf_usdskel_nodemap = {}
 
     
     def _get_child_nodes(self):
@@ -777,17 +784,18 @@ class GLTF2USD:
 '''
 Converts a glTF file to USD
 '''
-def convert_to_usd(gltf_file, verbose=False):
-    gltf_converter = GLTF2USD(gltf_file, verbose)
+def convert_to_usd(gltf_file, usd_path, verbose=False):
+    gltf_converter = GLTF2USD(gltf_file, usd_path, verbose)
     gltf_converter._convert_images_to_usd()
     gltf_converter._convert_materials_to_preview_surface()
     gltf_converter.convert_nodes_to_xform()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert glTF to USD')
-    parser.add_argument('--gltf', action='store', dest='gltf_file', help='glTF file (in .gltf format)', required=True)
+    parser.add_argument('--gltf', '-g', action='store', dest='gltf_file', help='glTF file (in .gltf format)', required=True)
+    parser.add_argument('--output', '-o', action='store', dest='usd_path', help='destination to store generated .usda file', required=True)
     parser.add_argument('--verbose', '-v', action='store_true', dest='verbose', help='Enable verbose mode')
     args = parser.parse_args()
 
     if args.gltf_file:
-        convert_to_usd(args.gltf_file, args.verbose)
+        convert_to_usd(args.gltf_file, args.usd_path, args.verbose)
