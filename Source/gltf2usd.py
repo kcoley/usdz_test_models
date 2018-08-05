@@ -69,8 +69,7 @@ class GLTF2USD:
         Converts the glTF nodes to USD Xforms.  The models get a parent Xform that scales the geometry by 100 
         to convert from meters (glTF) to centimeters (USD).
         """
-        parent_root = '/root'
-        parent_transform = UsdGeom.Xform.Define(self.stage, parent_root)
+        parent_transform = UsdGeom.Xform.Define(self.stage, '/root')
         parent_transform.AddScaleOp().Set((100, 100, 100))
         
         child_nodes = self._get_child_nodes()
@@ -79,9 +78,11 @@ class GLTF2USD:
             child_nodes = self._get_child_nodes()
             for i, node_index in enumerate(self.gltf_loader.json_data['scenes'][main_scene]['nodes']):
                 node = self.gltf_loader.json_data['nodes'][node_index]
-                if i not in child_nodes:
-                    xform_name = '{parent_root}/node{index}'.format(parent_root=parent_root, index=i)
-                    self._convert_node_to_xform(node, i, xform_name)
+                print(child_nodes)
+                print(node_index)
+                if node_index not in child_nodes:
+                    xform_name = '{parent_root}/node{index}'.format(parent_root=parent_transform.GetPath(), index=i)
+                    self._convert_node_to_xform(node, node_index, xform_name)
 
             self._convert_animations_to_usd()
             self.stage.GetRootLayer().Save()
