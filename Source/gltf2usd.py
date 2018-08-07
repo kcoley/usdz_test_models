@@ -573,50 +573,8 @@ class GLTF2USD:
                     usd_skeleton = joints[0]['skeleton']
                     usd_animation = UsdSkel.Animation.Define(self.stage, '{0}/{1}'.format(usd_skeleton.GetPath(), 'anim'))
                     usd_animation.CreateJointsAttr().Set(animated_joints)
-                    
-                    rotation_anim = usd_animation.CreateRotationsAttr()
-                    if 'rotation' in joint_map:   
-                        for i, joint in enumerate(joints):
-                            rotation_anim_data = joint_map['rotation']
-                            for entry in rotation_anim_data:
-                                rotation_anim.Set(time=entry, value=rotation_anim_data[entry])             
-                    else:
-                        rest_poses = []
-                        for i, joint in enumerate(joints):
-                            rotation = joints[i]['skeleton'].GetRestTransformsAttr().Get()[total_joints[joint]].ExtractRotation()
+                    self._store_joint_animations(usd_animation, joint_map, joint_index_map, joints)
 
-                            rest_poses.append(rotation)
-                        rotation_anim.Set(rest_poses)
-
-                    translation_anim = usd_animation.CreateTranslationsAttr()
-                    if 'translation' in joint_map:   
-                        for i, joint in enumerate(joints):
-                            translation_anim_data = joint_map['translation']
-                            for entry in translation_anim_data:
-                                translation_anim.Set(time=entry, value=translation_anim_data[entry])             
-                    else:
-                        rest_poses = []
-                        for i, joint in enumerate(joints):
-                            translation = joints[i]['skeleton'].GetRestTransformsAttr().Get()[joint_index_map[i]].ExtractTranslation()
-                            rest_poses.append(translation)
-                        translation_anim.Set(rest_poses)
-
-                    scale_anim = usd_animation.CreateScalesAttr()
-                    if 'scale' in joint_map:   
-                        for i, joint in enumerate(joints):
-                            scale_anim_data = joint_map['scale']
-                            for entry in scale_anim_data:
-                                scale_anim.Set(time=entry, value=scale_anim_data[entry])             
-                    else:
-                        rest_poses = []
-                        for i, joint in enumerate(joints):
-                            scale = [1,1,1]
-                            scale[0] = joints[i]['skeleton'].GetRestTransformsAttr().Get()[i].GetRow3(0).GetLength()
-                            scale[1] = joints[i]['skeleton'].GetRestTransformsAttr().Get()[i].GetRow3(1).GetLength()
-                            scale[2] = joints[i]['skeleton'].GetRestTransformsAttr().Get()[i].GetRow3(2).GetLength()
-
-                            rest_poses.append(scale)
-                        scale_anim.Set(rest_poses)
 
                     usd_skel_root_path = usd_skeleton.GetPath().GetParentPath()
                     usd_skel_root = self.stage.GetPrimAtPath(usd_skel_root_path)
@@ -629,25 +587,52 @@ class GLTF2USD:
                     
                         
                     
+    def _store_joint_animations(self, usd_animation, joint_map, joint_index_map, joints):
+        rotation_anim = usd_animation.CreateRotationsAttr()
+        if 'rotation' in joint_map:   
+            for i, joint in enumerate(joints):
+                rotation_anim_data = joint_map['rotation']
+                for entry in rotation_anim_data:
+                    rotation_anim.Set(time=entry, value=rotation_anim_data[entry])             
+        else:
+            rest_poses = []
+            for i, joint in enumerate(joints):
+                rotation = joints[i]['skeleton'].GetRestTransformsAttr().Get()[total_joints[joint]].ExtractRotation()
 
-                    
+                rest_poses.append(rotation)
+            rotation_anim.Set(rest_poses)
 
+        translation_anim = usd_animation.CreateTranslationsAttr()
+        if 'translation' in joint_map:   
+            for i, joint in enumerate(joints):
+                translation_anim_data = joint_map['translation']
+                for entry in translation_anim_data:
+                    translation_anim.Set(time=entry, value=translation_anim_data[entry])             
+        else:
+            rest_poses = []
+            for i, joint in enumerate(joints):
+                translation = joints[i]['skeleton'].GetRestTransformsAttr().Get()[joint_index_map[i]].ExtractTranslation()
+                rest_poses.append(translation)
+            translation_anim.Set(rest_poses)
 
+        scale_anim = usd_animation.CreateScalesAttr()
+        if 'scale' in joint_map:   
+            for i, joint in enumerate(joints):
+                scale_anim_data = joint_map['scale']
+                for entry in scale_anim_data:
+                    scale_anim.Set(time=entry, value=scale_anim_data[entry])             
+        else:
+            rest_poses = []
+            for i, joint in enumerate(joints):
+                scale = [1,1,1]
+                scale[0] = joints[i]['skeleton'].GetRestTransformsAttr().Get()[i].GetRow3(0).GetLength()
+                scale[1] = joints[i]['skeleton'].GetRestTransformsAttr().Get()[i].GetRow3(1).GetLength()
+                scale[2] = joints[i]['skeleton'].GetRestTransformsAttr().Get()[i].GetRow3(2).GetLength()
 
-                
-                
-                    
+                rest_poses.append(scale)
+            scale_anim.Set(rest_poses)
 
-
-
-
-
-
-
-                        
-
-
-        
+                       
     def _convert_animations_to_usd(self):
         """
         Convert glTF animations to USD animations
@@ -761,7 +746,7 @@ class GLTF2USD:
 
                 joint_indices_attr = skel_binding_api.CreateJointIndicesPrimvar(False, 4)
                 joint_indices_attr.Set(joint_indices)
-        
+
 
     def _compute_rest_matrix(self, gltf_node):
         """
