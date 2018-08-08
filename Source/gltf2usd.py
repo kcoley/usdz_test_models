@@ -82,8 +82,6 @@ class GLTF2USD:
         self.node_hierarchy = self._build_node_hierarchy()
 
         parent_less = [x for x in self.node_hierarchy if self.node_hierarchy[x].parent == None]
-        for node in parent_less:
-            print(self.node_hierarchy[node])
         
         child_nodes = self._get_child_nodes()
         if 'scenes' in self.gltf_loader.json_data:
@@ -546,8 +544,6 @@ class GLTF2USD:
     def _convert_skin_animations_to_usd(self):
         """Converts the skin animations to USD skeleton animations
         """
-        for x in self.node_hierarchy:
-            print('{0}/{1}'.format(x, self.node_hierarchy[x]))
 
         total_max_time = 0
         total_min_time = 0
@@ -609,10 +605,9 @@ class GLTF2USD:
                     usd_animation = UsdSkel.Animation.Define(self.stage, '{0}/{1}'.format(usd_skeleton.GetPath(), 'anim'))
              
                     animated_joints = [x.joint_name for x in joint_values ]
-                    skeleton_joints = [x.skeleton_joint for x in joint_values]
 
                     usd_animation.CreateJointsAttr().Set(animated_joints)
-                    self._store_joint_animations(usd_animation, joint_data, joint_map, joints)
+                    self._store_joint_animations(usd_animation, joint_values, joint_map)
 
 
                     usd_skel_root_path = usd_skeleton.GetPath().GetParentPath()
@@ -625,7 +620,7 @@ class GLTF2USD:
 
                                    
                     
-    def _store_joint_animations(self, usd_animation, joint_data, joint_map, joints):
+    def _store_joint_animations(self, usd_animation, joint_data, joint_map):
         rotation_anim = usd_animation.CreateRotationsAttr()
         joint_count = len(joint_data)
         if 'rotation' in joint_map:        
@@ -635,8 +630,8 @@ class GLTF2USD:
                     rotation_anim.Set(time=entry, value=rotation_anim_data[entry])             
         else:
             rest_poses = []
-            for i, joint in enumerate(joints):
-                rotation = joints[i]['skeleton'].GetRestTransformsAttr().Get()[i].ExtractRotation()
+            for i in range(0, joint_count):
+                rotation = joint_data[i].skeleton_joint.GetRestTransformsAttr().Get()[i].ExtractRotation()
 
                 rest_poses.append(rotation)
             rotation_anim.Set(rest_poses)
@@ -649,8 +644,8 @@ class GLTF2USD:
                     translation_anim.Set(time=entry, value=translation_anim_data[entry])             
         else:
             rest_poses = []
-            for i, joint in enumerate(joints):
-                translation = joints[i]['skeleton'].GetRestTransformsAttr().Get()[i].ExtractTranslation()
+            for i in range(0, joint_count):
+                translation = joint_data[i].skeleton_joint['skeleton'].GetRestTransformsAttr().Get()[i].ExtractTranslation()
                 rest_poses.append(translation)
             translation_anim.Set(rest_poses)
 
@@ -664,9 +659,10 @@ class GLTF2USD:
             rest_poses = []
             for i in range(0, joint_count):
                 scale = [1,1,1]
-                scale[0] = joints[i]['skeleton'].GetRestTransformsAttr().Get()[i].GetRow3(0).GetLength()
-                scale[1] = joints[i]['skeleton'].GetRestTransformsAttr().Get()[i].GetRow3(1).GetLength()
-                scale[2] = joints[i]['skeleton'].GetRestTransformsAttr().Get()[i].GetRow3(2).GetLength()
+                skeleton_joint = joint_data[i].skeleton_joint['skeleton']
+                scale[0] = skeleton_joint.GetRestTransformsAttr().Get()[i].GetRow3(0).GetLength()
+                scale[1] = skeleton_joint.GetRestTransformsAttr().Get()[i].GetRow3(1).GetLength()
+                scale[2] = skeleton_joint.GetRestTransformsAttr().Get()[i].GetRow3(2).GetLength()
 
                 rest_poses.append(scale)
             scale_anim.Set(rest_poses)
@@ -676,7 +672,6 @@ class GLTF2USD:
         """
         Convert glTF animations to USD animations
         """
-
         total_max_time = 0
         total_min_time = 0
 
@@ -691,9 +686,6 @@ class GLTF2USD:
                         sampler = animation['samplers'][channel['sampler']]
                         path = target['path']
                         (max_time, min_time) = self._create_usd_skeleton_animation(usd_skeleton=skeleton, sampler=sampler, gltf_target_path=path, joint_name=skeleton_joint['joint_name'], gltf_node=target['node'])
-                        usdskel_animation = UsdSkel.Animation(skeleton)
-
-
 
                     elif target['node'] in self.gltf_usd_nodemap:
                         usd_node = self.gltf_usd_nodemap[target['node']]
@@ -704,10 +696,6 @@ class GLTF2USD:
                     total_max_time = max(total_max_time, max_time)
                     total_min_time = min(total_min_time, min_time)
                     
-                    
-
-        
-
         self.stage.SetStartTimeCode(total_min_time)
         self.stage.SetEndTimeCode(total_max_time)
 
@@ -739,22 +727,17 @@ class GLTF2USD:
                 ).GetInverse())
             skeleton.CreateBindTransformsAttr().Set(bind_matrices)
 
-        joint_path = None
         joint_paths = []
         
         for i, joint_index in enumerate(gltf_skin['joints']):
             joint_node = self.gltf_loader.json_data['nodes'][joint_index]
             
             rest_matrices.append(self._compute_rest_matrix(joint_node))
+            
             name = joint_node['name'] if 'name' in joint_node else 'joint_{}'.format(i)
-
             node = self.node_hierarchy[joint_index]
             name = self._get_joint_name(node)
-            
-            if not joint_path:
-                joint_path = name
-            else:
-                joint_path = '{0}/{1}'.format(joint_path, name)
+              
             joint_paths.append(Sdf.Path(name))
 
             self.gltf_usdskel_nodemap[joint_index] = {'skeleton':skeleton, 'joint_name': name}
@@ -801,7 +784,8 @@ class GLTF2USD:
         xform_matrix = None
         if 'matrix' in gltf_node:
             matrix = gltf_node['matrix']
-            xform_matrix = Gf.Matrix4d(matrix[0], matrix[1], matrix[2], matrix[3],
+            xform_matrix = Gf.Matrix4d(
+                matrix[0], matrix[1], matrix[2], matrix[3],
                 matrix[4], matrix[5], matrix[6], matrix[7],
                 matrix[8], matrix[9], matrix[10], matrix[11],
                 matrix[12], matrix[13], matrix[14], matrix[15]
@@ -863,7 +847,8 @@ class GLTF2USD:
             for node_index, node in enumerate(self.gltf_loader.json_data['nodes']):
                 new_node = None
                 if node_index not in node_hierarchy:
-                    new_node = Node(index=node_index, parent=None, children=[], name='joint_{}'.format(node_index), hierarchy_name=[])
+                    node_name = node['name'] if 'name' in node else 'joint_{}'.format(node_index)
+                    new_node = Node(index=node_index, parent=None, children=[], name=node_name.format(node_index), hierarchy_name=[])
                     node_hierarchy[node_index] = new_node
                 else:
                     new_node = node_hierarchy[node_index]
@@ -872,7 +857,9 @@ class GLTF2USD:
                     for child_index in node['children']:
                         new_node.children.append(child_index)
                         if child_index not in node_hierarchy:
-                            child_node = Node(index=child_index, parent=node_index, children=[], name='joint_{}'.format(child_index), hierarchy_name=[])
+                            gltf_child_node = self.gltf_loader.json_data['nodes'][child_index]
+                            child_node_name = gltf_child_node['name'] if 'name' in gltf_child_node else 'joint_{}'.format(child_index)
+                            child_node = Node(index=child_index, parent=node_index, children=[], name=child_node_name, hierarchy_name=[])
                             node_hierarchy[child_index] = child_node
 
         return node_hierarchy
