@@ -15,6 +15,7 @@ from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf, UsdSkel
 
 AnimationsMap = collections.namedtuple('AnimationMap', ('path', 'sampler'))
 Node = collections.namedtuple('Node', ('index', 'parent', 'children', 'name', 'hierarchy_name'))
+
 JointData = collections.namedtuple('JointData', ('skeleton_joint', 'joint_name'))
 class GLTF2USD:
     """
@@ -709,6 +710,7 @@ class GLTF2USD:
         bind_matrices = []
         rest_matrices = []
         skeleton = UsdSkel.Skeleton.Define(self.stage, '{0}/skel{1}'.format(parent_path, node_index))
+        
         skeleton_root = self.stage.GetPrimAtPath(parent_path)
         skel_binding_api = UsdSkel.BindingAPI(usd_mesh)
         skel_binding_api_skel_root = UsdSkel.BindingAPI(skeleton_root)
@@ -734,7 +736,6 @@ class GLTF2USD:
             
             rest_matrices.append(self._compute_rest_matrix(joint_node))
             
-            name = joint_node['name'] if 'name' in joint_node else 'joint_{}'.format(i)
             node = self.node_hierarchy[joint_index]
             name = self._get_joint_name(node)
               
