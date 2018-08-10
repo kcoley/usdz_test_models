@@ -16,7 +16,7 @@ from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf, UsdSkel
 AnimationsMap = collections.namedtuple('AnimationMap', ('path', 'sampler'))
 Node = collections.namedtuple('Node', ('index', 'parent', 'children', 'name', 'hierarchy_name'))
 
-JointData = collections.namedtuple('JointData', ('skeleton_joint', 'joint_name'))
+JointData = collections.namedtuple('JointData', ('skeleton_joint', 'joint_name', 'joint_index'))
 class GLTF2USD:
     """
     Class for converting glTF 2.0 models to Pixar's USD format.  Currently openly supports .gltf files
@@ -310,7 +310,7 @@ class GLTF2USD:
             scope = UsdGeom.Scope.Define(self.stage, material_path_root)
 
             for i, material in enumerate(self.gltf_loader.json_data['materials']):
-                name = 'pbrmaterial{}'.format(i)
+                name = 'pbrmaterial_{}'.format(i)
                 material_path = Sdf.Path('{0}/{1}'.format(material_path_root, name))
                 usd_material = UsdShade.Material.Define(self.stage, material_path)
                 self.usd_materials.append(usd_material)
@@ -545,79 +545,79 @@ class GLTF2USD:
     def _convert_skin_animations_to_usd(self):
         """Converts the skin animations to USD skeleton animations
         """
+        if hasattr(self, 'animations_map'):
+            total_max_time = 0
+            total_min_time = 0
+            KeyFrame = collections.namedtuple('KeyFrame', ('input', 'output'))
+            if 'skins' in self.gltf_loader.json_data:
+                for skin in self.gltf_loader.json_data['skins']:
+                    joint_map = {}
+                    if 'joints' in skin:
+                        joints = []
+                        buffer = self.gltf_loader.json_data['buffers'][0]
+                        joint_anims = []
+                        joint_values = []
+                        for i, joint_index in enumerate(skin['joints']):    
+                            if joint_index in self.animations_map: 
+                                animation_channels = self.animations_map[joint_index]
+                                skeleton_joint = self.gltf_usdskel_nodemap[joint_index]
 
-        total_max_time = 0
-        total_min_time = 0
-        KeyFrame = collections.namedtuple('KeyFrame', ('input', 'output'))
-        if 'skins' in self.gltf_loader.json_data:
-            for skin in self.gltf_loader.json_data['skins']:
-                joint_map = {}
-                if 'joints' in skin:
-                    joints = []
-                    buffer = self.gltf_loader.json_data['buffers'][0]
-                    joint_anims = []
-                    joint_values = []
-                    for i, joint_index in enumerate(skin['joints']):    
-                        if joint_index in self.animations_map: 
-                            animation_channels = self.animations_map[joint_index]
-                            skeleton_joint = self.gltf_usdskel_nodemap[joint_index]
+                                joints.append(skeleton_joint)
+                                joint_node = self.node_hierarchy[joint_index]
+                                joint_name = self._get_joint_name(joint_node)
 
-                            joints.append(skeleton_joint)
-                            joint_node = self.node_hierarchy[joint_index]
-                            joint_name = self._get_joint_name(joint_node)
+                                joint_data = JointData(skeleton_joint=skeleton_joint, joint_name=joint_name, joint_index=i)
+                                joint_values.append(joint_data)
 
-                            joint_data = JointData(skeleton_joint=skeleton_joint, joint_name=joint_name)
-                            joint_values.append(joint_data)
+                                path_keyframes_map = {}
+                                for animation_channel in animation_channels:
+                                    if animation_channel.path not in joint_map:
+                                        joint_map[animation_channel.path] = {}
+                                    convert_func = self._get_keyframe_usdskel_value_conversion_func2(animation_channel.path)
+                                    path_keyframes_map[animation_channel.path] = []
+                                    
+                                    input_keyframe_accessor = self.gltf_loader.json_data['accessors'][animation_channel.sampler['input']]
+                                    
+                                    max_time = int(round(input_keyframe_accessor['max'][0] * self.fps))
+                                    min_time = int(round(input_keyframe_accessor['min'][0] * self.fps))
+                                    total_max_time = max(total_max_time, max_time)
+                                    total_min_time = min(total_min_time, min_time)
+                                    input_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=input_keyframe_accessor)
+                                    output_keyframe_accessor = self.gltf_loader.json_data['accessors'][animation_channel.sampler['output']]
+                                    output_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=output_keyframe_accessor)
+                                    
+                                    if len(input_keyframes) != len(output_keyframes):
+                                        raise Exception('glTF animation input and output key frames must be the same length!')
 
-                            path_keyframes_map = {}
-                            for animation_channel in animation_channels:
-                                if animation_channel.path not in joint_map:
-                                    joint_map[animation_channel.path] = {}
-                                convert_func = self._get_keyframe_usdskel_value_conversion_func2(animation_channel.path)
-                                path_keyframes_map[animation_channel.path] = []
-                                
-                                input_keyframe_accessor = self.gltf_loader.json_data['accessors'][animation_channel.sampler['input']]
-                                
-                                max_time = int(round(input_keyframe_accessor['max'][0] * self.fps))
-                                min_time = int(round(input_keyframe_accessor['min'][0] * self.fps))
-                                total_max_time = max(total_max_time, max_time)
-                                total_min_time = min(total_min_time, min_time)
-                                input_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=input_keyframe_accessor)
-                                output_keyframe_accessor = self.gltf_loader.json_data['accessors'][animation_channel.sampler['output']]
-                                output_keyframes = self.gltf_loader.get_data(buffer=buffer, accessor=output_keyframe_accessor)
-                                
-                                if len(input_keyframes) != len(output_keyframes):
-                                    raise Exception('glTF animation input and output key frames must be the same length!')
+                                    for i, input_keyframe in enumerate(input_keyframes):
+                                        frame = int(round(input_keyframe * self.fps))
+                                        value = convert_func(output_keyframes[i])
+                                        if frame in joint_map[animation_channel.path]:
+                                            joint_map[animation_channel.path][frame].append(value) 
+                                        else:
+                                            joint_map[animation_channel.path][frame] = [value]
 
-                                for i, input_keyframe in enumerate(input_keyframes):
-                                    frame = int(round(input_keyframe * self.fps))
-                                    value = convert_func(output_keyframes[i])
-                                    if frame in joint_map[animation_channel.path]:
-                                        joint_map[animation_channel.path][frame].append(value) 
-                                    else:
-                                        joint_map[animation_channel.path][frame] = [value]
+                                        keyframe = KeyFrame(input=int(round(input_keyframe * self.fps)), output=convert_func(output_keyframes[i]))
+                                        path_keyframes_map[animation_channel.path].append(keyframe)
 
-                                    keyframe = KeyFrame(input=int(round(input_keyframe * self.fps)), output=convert_func(output_keyframes[i]))
-                                    path_keyframes_map[animation_channel.path].append(keyframe)
+                                joint_anims.append(path_keyframes_map)
 
-                            joint_anims.append(path_keyframes_map)
+                        usd_skeleton = joints[0]['skeleton']
+                        usd_animation = UsdSkel.Animation.Define(self.stage, '{0}/{1}'.format(usd_skeleton.GetPath(), 'anim'))
+                
+                        animated_joints = [x.joint_name for x in joint_values ]
 
-                    usd_skeleton = joints[0]['skeleton']
-                    usd_animation = UsdSkel.Animation.Define(self.stage, '{0}/{1}'.format(usd_skeleton.GetPath(), 'anim'))
-             
-                    animated_joints = [x.joint_name for x in joint_values ]
-
-                    usd_animation.CreateJointsAttr().Set(animated_joints)
-                    self._store_joint_animations(usd_animation, joint_values, joint_map)
+                        usd_animation.CreateJointsAttr().Set(animated_joints)
+                        self._store_joint_animations(usd_animation, joint_values, joint_map)
 
 
-                    usd_skel_root_path = usd_skeleton.GetPath().GetParentPath()
-                    usd_skel_root = self.stage.GetPrimAtPath(usd_skel_root_path)
+                        usd_skel_root_path = usd_skeleton.GetPath().GetParentPath()
+                        usd_skel_root = self.stage.GetPrimAtPath(usd_skel_root_path)
 
-                    UsdSkel.BindingAPI(usd_skel_root).CreateAnimationSourceRel().AddTarget(usd_animation.GetPath())
-        
-        self.stage.SetStartTimeCode(total_min_time)
-        self.stage.SetEndTimeCode(total_max_time)         
+                        UsdSkel.BindingAPI(usd_skel_root).CreateAnimationSourceRel().AddTarget(usd_animation.GetPath())
+            
+            self.stage.SetStartTimeCode(total_min_time)
+            self.stage.SetEndTimeCode(total_max_time)         
 
                                    
                     
@@ -631,8 +631,8 @@ class GLTF2USD:
                     rotation_anim.Set(time=entry, value=rotation_anim_data[entry])             
         else:
             rest_poses = []
-            for i in range(0, joint_count):
-                rotation = joint_data[i].skeleton_joint.GetRestTransformsAttr().Get()[i].ExtractRotation()
+            for joint in joint_data:
+                rotation = joint.skeleton_joint.GetRestTransformsAttr().Get()[joint.joint_index].ExtractRotation()
 
                 rest_poses.append(rotation)
             rotation_anim.Set(rest_poses)
@@ -645,25 +645,26 @@ class GLTF2USD:
                     translation_anim.Set(time=entry, value=translation_anim_data[entry])             
         else:
             rest_poses = []
-            for i in range(0, joint_count):
-                translation = joint_data[i].skeleton_joint['skeleton'].GetRestTransformsAttr().Get()[i].ExtractTranslation()
+            for joint in joint_data:
+                translation = joint.skeleton_joint['skeleton'].GetRestTransformsAttr().Get()[joint.joint_index].ExtractTranslation()
                 rest_poses.append(translation)
             translation_anim.Set(rest_poses)
 
         scale_anim = usd_animation.CreateScalesAttr()
         if 'scale' in joint_map:   
-            for i in range(0, joint_count):
+            for joint in range(0, joint_count):
                 scale_anim_data = joint_map['scale']
                 for entry in scale_anim_data:
                     scale_anim.Set(time=entry, value=scale_anim_data[entry])             
         else:
             rest_poses = []
-            for i in range(0, joint_count):
+            for joint in joint_data:
                 scale = [1,1,1]
                 skeleton_joint = joint_data[i].skeleton_joint['skeleton']
-                scale[0] = skeleton_joint.GetRestTransformsAttr().Get()[i].GetRow3(0).GetLength()
-                scale[1] = skeleton_joint.GetRestTransformsAttr().Get()[i].GetRow3(1).GetLength()
-                scale[2] = skeleton_joint.GetRestTransformsAttr().Get()[i].GetRow3(2).GetLength()
+                joint_index = joint.joint_index
+                scale[0] = skeleton_joint.GetRestTransformsAttr().Get()[joint_index].GetRow3(0).GetLength()
+                scale[1] = skeleton_joint.GetRestTransformsAttr().Get()[joint_index].GetRow3(1).GetLength()
+                scale[2] = skeleton_joint.GetRestTransformsAttr().Get()[joint_index].GetRow3(2).GetLength()
 
                 rest_poses.append(scale)
             scale_anim.Set(rest_poses)
@@ -731,7 +732,7 @@ class GLTF2USD:
 
         joint_paths = []
         
-        for i, joint_index in enumerate(gltf_skin['joints']):
+        for joint_index in gltf_skin['joints']:
             joint_node = self.gltf_loader.json_data['nodes'][joint_index]
             
             rest_matrices.append(self._compute_rest_matrix(joint_node))
