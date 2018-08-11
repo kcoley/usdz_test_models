@@ -202,6 +202,7 @@ class GLTF2USD:
         """
         usd_node = self.stage.GetPrimAtPath(parent_path)
         mesh = UsdGeom.Mesh.Define(self.stage, '{0}/{1}'.format(parent_path, name))
+        mesh.CreateSubdivisionSchemeAttr().Set('none')
 
         if 'material' in primitive:
             usd_material = self.usd_materials[primitive['material']]
@@ -592,23 +593,17 @@ class GLTF2USD:
                                         
                                     #loop through time samples
                                     for i, input_keyframe in enumerate(input_keyframes):
-                                        frame = int(round(input_keyframe * self.fps))
-                                        frame = i
+                                        frame = input_keyframe * self.fps
+                                        #frame = i
                                         value = convert_func(output_keyframes[i])
                                         if frame in joint_map[animation_channel.path]:
                                             joint_map[animation_channel.path][frame].append(value) 
                                         else:
                                             joint_map[animation_channel.path][frame] = [value]
 
-                                        keyframe = KeyFrame(input=int(round(input_keyframe * self.fps)), output=convert_func(output_keyframes[i]))
+                                        keyframe = KeyFrame(input=frame, output=convert_func(output_keyframes[i]))
                                         path_keyframes_map[animation_channel.path].append(keyframe)
-
-                                    print(input_keyframes)
-                                    print('2 {}'.format(len(joint_map['translation'][2])))
-
-                                    print('3 {}'.format(len(joint_map['translation'][3])))
                                         
-
                                 joint_anims.append(path_keyframes_map)
 
 
