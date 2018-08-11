@@ -30,7 +30,7 @@ class GLTF2USD:
         TextureWrap.REPEAT: 'repeat',
     }
 
-    def __init__(self, gltf_file, usd_file, fps=24, verbose=False):
+    def __init__(self, gltf_file, usd_file, fps, verbose=False):
         """Initializes the glTF to USD converter
         
         Arguments:
@@ -147,7 +147,7 @@ class GLTF2USD:
             xform_matrix = Gf.Matrix4d()
             if 'scale' in node:
                 scale = node['scale']
-                xform_matrix.SetScale((scale[0], scale[1], scale[2]))
+                #xform_matrix.SetScale((scale[0], scale[1], scale[2]))
 
             if 'rotation' in node:
                 rotation = node['rotation']
@@ -792,7 +792,7 @@ class GLTF2USD:
             xform_matrix = Gf.Matrix4d()
             if 'scale' in gltf_node:
                 scale = gltf_node['scale']
-                xform_matrix.SetScale((scale[0], scale[1], scale[2]))
+                #xform_matrix.SetScale((scale[0], scale[1], scale[2]))
 
             if 'rotation' in gltf_node:
                 rotation = gltf_node['rotation']
@@ -1042,7 +1042,7 @@ class GLTF2USD:
 
 
 
-def convert_to_usd(gltf_file, usd_file, verbose=False):
+def convert_to_usd(gltf_file, usd_file, fps, verbose=False):
     """Converts a glTF file to USD
     
     Arguments:
@@ -1053,7 +1053,7 @@ def convert_to_usd(gltf_file, usd_file, verbose=False):
         verbose {bool} -- [description] (default: {False})
     """
 
-    gltf_converter = GLTF2USD(gltf_file=gltf_file, usd_file=usd_file, fps=24, verbose=verbose)
+    gltf_converter = GLTF2USD(gltf_file=gltf_file, usd_file=usd_file, fps=fps, verbose=verbose)
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Convert glTF to USD')
@@ -1064,4 +1064,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     if args.gltf_file:
-        convert_to_usd(args.gltf_file, args.usd_file, args.verbose)
+        convert_to_usd(args.gltf_file, args.usd_file, args.fps, args.verbose)
