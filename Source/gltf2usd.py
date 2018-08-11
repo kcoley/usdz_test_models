@@ -758,14 +758,19 @@ class GLTF2USD:
             inverse_bind_matrices = self.gltf_loader.get_data(buffer=self.buffer, accessor=inverse_bind_matrices_accessor)
             
             for matrix in inverse_bind_matrices:
-                bind_matrices.append(Gf.Matrix4d(
-                    matrix[0], matrix[1], matrix[2], matrix[3],
-                    matrix[4], matrix[5], matrix[6], matrix[7],
-                    matrix[8], matrix[9], matrix[10], matrix[11],
-                    matrix[12], matrix[13], matrix[14], matrix[15]
-                ).GetInverse())
+                bind_matrix = self._convert_to_usd_matrix(matrix)
+                bind_matrices.append(bind_matrix.GetInverse())
 
         return bind_matrices
+
+    def _convert_to_usd_matrix(self, matrix):
+        return Gf.Matrix4d(
+            matrix[0], matrix[1], matrix[2], matrix[3],
+            matrix[4], matrix[5], matrix[6], matrix[7],
+            matrix[8], matrix[9], matrix[10], matrix[11],
+            matrix[12], matrix[13], matrix[14], matrix[15]
+        )
+
         
 
 
@@ -781,28 +786,27 @@ class GLTF2USD:
         xform_matrix = None
         if 'matrix' in gltf_node:
             matrix = gltf_node['matrix']
-            xform_matrix = Gf.Matrix4d(
-                matrix[0], matrix[1], matrix[2], matrix[3],
-                matrix[4], matrix[5], matrix[6], matrix[7],
-                matrix[8], matrix[9], matrix[10], matrix[11],
-                matrix[12], matrix[13], matrix[14], matrix[15]
-            )
+            xform_matrix = self._convert_to_usd_matrix(matrix)
+            
             
         else:
-            xform_matrix = Gf.Matrix4d()
+            usd_scale = Gf.Vec3h(1,1,1)
+            usd_rotation = Gf.Quatf()
+            usd_translation = Gf.Vec3f(0,0,0)
             if 'scale' in gltf_node:
                 scale = gltf_node['scale']
-                #xform_matrix.SetScale((scale[0], scale[1], scale[2]))
+                usd_scale = Gf.Vec3h(scale[0], scale[1], scale[2])
 
             if 'rotation' in gltf_node:
                 rotation = gltf_node['rotation']
-                xform_matrix.SetRotateOnly(Gf.Quatf(rotation[3], rotation[0], rotation[1], rotation[2]))
+                usd_rotation = Gf.Quatf(rotation[3], rotation[0], rotation[1], rotation[2])
 
             if 'translation' in gltf_node:
                 translation = gltf_node['translation']
-                xform_matrix.SetTranslateOnly(((translation[0], translation[1], translation[2])))
+                usd_translation = Gf.Vec3f(translation[0], translation[1], translation[2])
 
-        return xform_matrix
+        return UsdSkel.MakeTransform(usd_translation, usd_rotation, usd_scale)
+
 
 
     def _build_node_hierarchy(self):
