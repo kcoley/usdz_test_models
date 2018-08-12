@@ -78,7 +78,16 @@ def accessor_component_type_bytesize(x):
 
 
 class GLTF2Loader:
+    """A very simple glTF loader.  It is essentially a utility to load data from accessors
+    """
+
     def __init__(self, gltf_file):
+        """Initializes the glTF 2.0 loader
+        
+        Arguments:
+            gltf_file {str} -- Path to glTF file
+        """
+
         if os.path.isfile(gltf_file) and gltf_file.endswith('.gltf'):
             self.root_dir = os.path.dirname(gltf_file)
             with open(gltf_file) as f:
@@ -107,8 +116,6 @@ class GLTF2Loader:
             accessor_type_size = accessor_type_count(accessor['type'])
             accessor_component_type_size = accessor_component_type_bytesize(accessor_component_type)
             
-            #bytesize = self.align(accessor_component_type_bytesize(accessor_component_type), 4)
-
             bytestride = int(bufferview['byteStride']) if ('byteStride' in bufferview) else (accessor_type_size * accessor_component_type_size)
             offset = accessor['byteOffset'] if 'byteOffset' in accessor else 0
 
@@ -129,8 +136,6 @@ class GLTF2Loader:
             else:
                 raise Exception('unsupported accessor component type!')
 
-            
-
             for i in range(0, accessor['count']):
                 entries = []
                 for j in range(0, accessor_type_size):
@@ -144,7 +149,3 @@ class GLTF2Loader:
                 offset = offset + bytestride
 
             return data_arr
-
-if __name__ == '__main__':
-    loader = GLTF2Loader(gltf_file='C:\\Users\\kacey\\Github\\glTF-Asset-Generator\\Output\\Mesh_PrimitiveAttribute\Mesh_PrimitiveAttribute_00.gltf')
-    print loader.get_data(loader.json_data['buffers'][0], loader.json_data['accessors'][2])

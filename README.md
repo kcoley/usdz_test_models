@@ -2,7 +2,7 @@
 
 This tool is a command-line Python script which converts glTF 2.0 models to USD, with the goal being simple pipeline conversion from glTF to usdz using Pixar's `usdzip` or Apple's `usdz_converter`.  
 
-The tool is a **proof-of-concept**, to determine format conversion information, which could be useful for an actual C++ USD plugin.  It has been developed and tested on both Windows 10 and Mac OS 10.14 Mojave Beta, using USD v18.09 and is built against the USD Python API.
+The tool is a **proof-of-concept**, to determine format conversion details, which could be useful for an actual C++ USD plugin.  It has been developed and tested on both Windows 10 and Mac OS 10.14 Mojave Beta, using USD v18.09 and is built against the USD Python API.
 
 This tool currently only works on glTF 2.0 files with external textures, based on the core glTF 2.0 specification (no extensions).  
 
@@ -18,6 +18,7 @@ This tool currently only works on glTF 2.0 files with external textures, based o
 - `.glb` files
 - glTF files with base64 data
 - `PbrSpecularGlossiness` or other glTF extensions
+- Primitive modes (other than triangles)
 
 # Note:
 - The root node of the generated USD file is scaled by 100 to convert from glTF's meters to USD's centimeters.  This scale is purely to be able to see the glTF models when using ARKit, or otherwise, they are too small.
@@ -26,6 +27,7 @@ This tool currently only works on glTF 2.0 files with external textures, based o
 # Dependencies:
 - You will need to initially have `USD` installed on your system 
 and have the Python modules built
+- Pillow (Python module for image manipulation)
 
 
 # Help Menu:
