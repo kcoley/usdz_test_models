@@ -38,7 +38,7 @@ optional arguments:
   -h, --help            show this help message and exit
   --gltf GLTF_FILE, -g GLTF_FILE
                         glTF file (in .gltf format)
-  --fps FPS             The frames per second for the animations
+  --fps FPS             The frames per second for the animations (defaults to 24 fps)
   --output USD_FILE, -o USD_FILE
                         destination to store generated .usda file
   --verbose, -v         Enable verbose mode
