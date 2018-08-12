@@ -719,28 +719,24 @@ class GLTF2USD:
         skeleton.CreateJointsAttr().Set(joint_paths)
         gltf_mesh = self.gltf_loader.json_data['meshes'][gltf_node['mesh']]
         if 'primitives' in gltf_mesh:
-            if 'WEIGHTS_0' in gltf_mesh['primitives'][0]['attributes']:
+            primitive_attributes = gltf_mesh['primitives'][0]['attributes']
+            if 'WEIGHTS_0' in primitive_attributes and 'JOINTS_0' in primitive_attributes:
                 accessor = self.gltf_loader.json_data['accessors'][gltf_mesh['primitives'][0]['attributes']['WEIGHTS_0']]
                 total_vertex_weights = self.gltf_loader.get_data(self.buffer, accessor)
 
-                joint_weights = []
-                for vertex_weights in total_vertex_weights:
-                    for weight in vertex_weights:
-                        joint_weights.append(weight)
-
-                joint_weights_attr = skel_binding_api.CreateJointWeightsPrimvar(False, 4)
-                joint_weights_attr.Set(joint_weights)
-
-            if 'JOINTS_0' in gltf_mesh['primitives'][0]['attributes']:
                 accessor = self.gltf_loader.json_data['accessors'][gltf_mesh['primitives'][0]['attributes']['JOINTS_0']]
                 total_vertex_joints = self.gltf_loader.get_data(self.buffer, accessor)
-                joint_indices = []
-                for vertex_joints in total_vertex_joints:
-                    for joint in vertex_joints:
-                        joint_indices.append(joint)
+                total_joint_indices = []
+                total_joint_weights = []
+                for joint_indices, weights in zip(total_vertex_joints, total_vertex_weights):
+                    for joint_index, weight in zip(joint_indices, weights):
+                        total_joint_indices.append(joint_index)
+                        total_joint_weights.append(weight)
 
-                joint_indices_attr = skel_binding_api.CreateJointIndicesPrimvar(False, 4)
-                joint_indices_attr.Set(joint_indices)
+                joint_indices_attr = skel_binding_api.CreateJointIndicesPrimvar(False, 4).Set(total_joint_indices)
+                joint_weights_attr = skel_binding_api.CreateJointWeightsPrimvar(False, 4).Set(total_joint_weights)
+
+   
 
     def _compute_bind_transforms(self, gltf_skin):
         """Compute the bind matrices from the skin
