@@ -1,8 +1,10 @@
 # gltf2usd
 
-This tool is a command-line Python script which converts glTF 2.0 models to USD, with the goal being simple conversion to usdz using Pixar's `usdzip` or Apple's `usdz_converter`.  The tool is a **proof-of-concept**, to determine format conversion information, which could be useful for an actual C++ USD plugin.  This tool has been developed and tested on both Windows 10 and Mac OS 10.14 Mojave Beta, using USD v18.09.
+This tool is a command-line Python script which converts glTF 2.0 models to USD, with the goal being simple pipeline conversion from glTF to usdz using Pixar's `usdzip` or Apple's `usdz_converter`.  
 
-This tools currently only works on glTF 2.0 files with external textures, based on the core glTF 2.0 specification (no extensions).  
+The tool is a **proof-of-concept**, to determine format conversion information, which could be useful for an actual C++ USD plugin.  It has been developed and tested on both Windows 10 and Mac OS 10.14 Mojave Beta, using USD v18.09 and is built against the USD Python API.
+
+This tool currently only works on glTF 2.0 files with external textures, based on the core glTF 2.0 specification (no extensions).  
 
 # Supported Features
 - glTF nodes are mapped to USD `Xform`
@@ -13,7 +15,7 @@ This tools currently only works on glTF 2.0 files with external textures, based 
 
 
 # Currently not implemented:
-- glb files
+- `.glb` files
 - glTF files with base64 data
 - `PbrSpecularGlossiness` or other glTF extensions
 
