@@ -11,7 +11,7 @@ from gltf2loader import GLTF2Loader, PrimitiveMode, TextureWrap, MinFilter, MagF
 
 from PIL import Image
 
-from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf, UsdSkel
+from pxr import Usd, UsdGeom, Sdf, UsdShade, Gf, UsdSkel, Vt
 
 AnimationsMap = collections.namedtuple('AnimationMap', ('path', 'sampler'))
 Node = collections.namedtuple('Node', ('index', 'parent', 'children', 'name', 'hierarchy_name'))
@@ -132,34 +132,10 @@ class GLTF2USD:
         xform_path = '{}'.format(xform_name)
         xformPrim = UsdGeom.Xform.Define(self.stage, xform_path)
         self.gltf_usd_nodemap[node_index] = xformPrim
-        
-        if 'matrix' in node:
-            matrix = node['matrix']
-            xformPrim.AddTransformOp().Set(
-                Gf.Matrix4d(
-                    matrix[0], matrix[1], matrix[2], matrix[3],
-                    matrix[4], matrix[5], matrix[6], matrix[7],
-                    matrix[8], matrix[9], matrix[10], matrix[11],
-                    matrix[12], matrix[13], matrix[14], matrix[15]
-                    )
-            )
-        else:
-            xform_matrix = Gf.Matrix4d()
-            if 'scale' in node:
-                scale = node['scale']
-                #xform_matrix.SetScale((scale[0], scale[1], scale[2]))
 
-            if 'rotation' in node:
-                rotation = node['rotation']
-                xform_matrix.SetRotateOnly(Gf.Quatf(rotation[3], rotation[0], rotation[1], rotation[2]))
-
-            if 'translation' in node:
-                translation = node['translation']
-                xform_matrix.SetTranslateOnly((translation[0], translation[1], translation[2]))
-
-            xformPrim.AddTransformOp().Set(xform_matrix)
-        
-        
+        xform_matrix = self._compute_rest_matrix(node)    
+        xformPrim.AddTransformOp().Set(xform_matrix)
+          
         if 'mesh' in node:
             mesh_path = xform_path
             if 'skin' in node:
@@ -607,6 +583,7 @@ class GLTF2USD:
                                 joint_anims.append(path_keyframes_map)
 
 
+
                         usd_skeleton = joints[0]['skeleton']
                         usd_animation = UsdSkel.Animation.Define(self.stage, '{0}/{1}'.format(usd_skeleton.GetPath(), 'anim'))
                 
@@ -728,12 +705,15 @@ class GLTF2USD:
                 total_vertex_joints = self.gltf_loader.get_data(self.buffer, accessor)
                 total_joint_indices = []
                 total_joint_weights = []
+                
                 for joint_indices, weights in zip(total_vertex_joints, total_vertex_weights):
                     for joint_index, weight in zip(joint_indices, weights):
                         total_joint_indices.append(joint_index)
                         total_joint_weights.append(weight)
 
                 joint_indices_attr = skel_binding_api.CreateJointIndicesPrimvar(False, 4).Set(total_joint_indices)
+                total_joint_weights = Vt.FloatArray(total_joint_weights)
+                UsdSkel.NormalizeWeights(total_joint_weights, 4)
                 joint_weights_attr = skel_binding_api.CreateJointWeightsPrimvar(False, 4).Set(total_joint_weights)
 
    
@@ -783,8 +763,7 @@ class GLTF2USD:
         if 'matrix' in gltf_node:
             matrix = gltf_node['matrix']
             xform_matrix = self._convert_to_usd_matrix(matrix)
-            
-            
+            return xform_matrix
         else:
             usd_scale = Gf.Vec3h(1,1,1)
             usd_rotation = Gf.Quatf()
